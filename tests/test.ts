@@ -27,9 +27,7 @@ async function main() {
 
   console.timeLog()
 
-  const stm = await conn.prepare('select * from dbo.borrower b where b.borrower_bar = ?', [
-    new DataFormat(DataType.TEXT),
-  ]);
+  const stm = await conn.prepare('select * from dbo.borrower b where b.borrower_bar = ?');
   console.log('PreparedStatement erstellt');
   const result = await stm.execute(['311083758243']);
 

@@ -1,4 +1,4 @@
-import { PduType } from './constants/tds-const';
+import { PduType, DataType } from './constants/tds-const';
 import { DynamicToken } from './protocol/tokens/dynamic-token';
 import { ParamFmtToken } from './protocol/tokens/param-fmt-token';
 import { ParamsToken } from './protocol/tokens/params-token';
@@ -59,15 +59,19 @@ export class PreparedStatement {
     if (this._closed) throw new Error('PreparedStatement bereits geschlossen');
 
     const hasParams = values.length > 0;
-
     const dynBuf = DynamicToken.execute(this._name, hasParams);
 
     let payload: Buffer;
     if (hasParams) {
-      const fmtBuf = ParamFmtToken.build(this._params);
+      // Use user-supplied DataFormats if available, otherwise infer from values.
+      const params = this._params.length > 0
+        ? this._params
+        : values.map(PreparedStatement._inferFormat);
+
+      const fmtBuf    = ParamFmtToken.build(params);
       const markerBuf = ParamsToken.buildMarker();
       const paramBytes = Buffer.concat(
-        this._params.map((df, i) => this._conn._mapper.encodeParam(df, values[i])),
+        params.map((df, i) => this._conn._mapper.encodeParam(df, values[i])),
       );
       payload = Buffer.concat([dynBuf, fmtBuf, markerBuf, paramBytes]);
     } else {
@@ -78,6 +82,14 @@ export class PreparedStatement {
     return this._conn._collectResult();
   }
 
+  private static _inferFormat(value: JsValue): DataFormat {
+    if (typeof value === 'string')  return new DataFormat(DataType.VARCHAR);
+    if (typeof value === 'number')  return Number.isInteger(value) ? new DataFormat(DataType.INT4) : new DataFormat(DataType.FLT8);
+    if (typeof value === 'boolean') return new DataFormat(DataType.BIT);
+    if (value instanceof Date)      return new DataFormat(DataType.DATETIMN);
+    return new DataFormat(DataType.VARCHAR);
+  }
+
   // -------------------------------------------------------------------------
   // close()
   // -------------------------------------------------------------------------
@@ -86,7 +98,7 @@ export class PreparedStatement {
     if (this._closed) return;
 
     const deallocBuf = DynamicToken.deallocate(this._name);
-    await this._conn._send(PduType.BUF_LANG, deallocBuf);
+    await this._conn._send(PduType.BUF_NORMAL, deallocBuf);
     await this._conn._collectResult();
 
     this._closed = true;

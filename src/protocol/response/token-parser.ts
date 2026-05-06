@@ -111,6 +111,13 @@ export class TokenParser {
           break;
         }
 
+        // PARAMFMT2 uses a 4-byte length field.
+        case TokenType.PARAMFMT2: {
+          const bodyLen = data.readUInt32BE(pos + 1);
+          pos += 5 + bodyLen;
+          break;
+        }
+
         default:
           throw new Error(
             `Unbekannter TDS-Token-Typ 0x${tokenType.toString(16).padStart(2, '0')} bei Offset ${pos}`,
