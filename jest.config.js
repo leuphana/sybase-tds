@@ -4,6 +4,7 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
+  setupFiles: ["dotenv/config"],
   transform: {
     '^.+\\.ts$': [
       'ts-jest',

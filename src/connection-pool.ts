@@ -64,7 +64,7 @@ export class ConnectionPool {
 
     // Create a new connection if below max (max=0 means unlimited)
     if (max === 0 || total < max) {
-      const conn = await Connection.connect(this._options);
+      const conn = await new Connection(this._options).connect();
       this._active++;
       return conn;
     }

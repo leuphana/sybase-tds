@@ -14,22 +14,22 @@ export class TypeMapper {
     switch (df.dataType) {
       case DataType.INT1:   return raw.readUInt8(0);
       case DataType.BIT:    return raw[0] !== 0;
-      case DataType.INT2:   return this.byteswap ? raw.readInt16BE(0)     : raw.readInt16LE(0);
-      case DataType.INT4:   return this.byteswap ? raw.readInt32BE(0)     : raw.readInt32LE(0);
-      case DataType.INT8:   return this.byteswap ? raw.readBigInt64BE(0)  : raw.readBigInt64LE(0);
-      case DataType.UINT2:  return this.byteswap ? raw.readUInt16BE(0)    : raw.readUInt16LE(0);
-      case DataType.UINT4:  return this.byteswap ? raw.readUInt32BE(0)    : raw.readUInt32LE(0);
-      case DataType.UINT8:  return this.byteswap ? raw.readBigUInt64BE(0) : raw.readBigUInt64LE(0);
+      case DataType.INT2:   return this.byteswap ? raw.readInt16LE(0)     : raw.readInt16BE(0);
+      case DataType.INT4:   return this.byteswap ? raw.readInt32LE(0)     : raw.readInt32BE(0);
+      case DataType.INT8:   return this.byteswap ? raw.readBigInt64LE(0)  : raw.readBigInt64BE(0);
+      case DataType.UINT2:  return this.byteswap ? raw.readUInt16LE(0)    : raw.readUInt16BE(0);
+      case DataType.UINT4:  return this.byteswap ? raw.readUInt32LE(0)    : raw.readUInt32BE(0);
+      case DataType.UINT8:  return this.byteswap ? raw.readBigUInt64LE(0) : raw.readBigUInt64BE(0);
 
       case DataType.INTN:   return this._decodeIntN(raw, true);
       case DataType.UINTN:  return this._decodeIntN(raw, false);
 
-      case DataType.FLT4:   return this.byteswap ? raw.readFloatBE(0)  : raw.readFloatLE(0);
-      case DataType.FLT8:   return this.byteswap ? raw.readDoubleBE(0) : raw.readDoubleLE(0);
+      case DataType.FLT4:   return this.byteswap ? raw.readFloatLE(0)  : raw.readFloatBE(0);
+      case DataType.FLT8:   return this.byteswap ? raw.readDoubleLE(0) : raw.readDoubleBE(0);
       case DataType.FLTN:
         return raw.length === 4
-          ? (this.byteswap ? raw.readFloatBE(0)  : raw.readFloatLE(0))
-          : (this.byteswap ? raw.readDoubleBE(0) : raw.readDoubleLE(0));
+          ? (this.byteswap ? raw.readFloatLE(0)  : raw.readFloatBE(0))
+          : (this.byteswap ? raw.readDoubleLE(0) : raw.readDoubleBE(0));
 
       case DataType.DECN:
       case DataType.NUMN:
@@ -79,25 +79,27 @@ export class TypeMapper {
     switch (raw.length) {
       case 1: return raw.readUInt8(0);
       case 2: return signed
-        ? (this.byteswap ? raw.readInt16BE(0)  : raw.readInt16LE(0))
-        : (this.byteswap ? raw.readUInt16BE(0) : raw.readUInt16LE(0));
+        ? (this.byteswap ? raw.readInt16LE(0)  : raw.readInt16BE(0))
+        : (this.byteswap ? raw.readUInt16LE(0) : raw.readUInt16BE(0));
       case 4: return signed
-        ? (this.byteswap ? raw.readInt32BE(0)  : raw.readInt32LE(0))
-        : (this.byteswap ? raw.readUInt32BE(0) : raw.readUInt32LE(0));
+        ? (this.byteswap ? raw.readInt32LE(0)  : raw.readInt32BE(0))
+        : (this.byteswap ? raw.readUInt32LE(0) : raw.readUInt32BE(0));
       case 8: return signed
-        ? (this.byteswap ? raw.readBigInt64BE(0)  : raw.readBigInt64LE(0))
-        : (this.byteswap ? raw.readBigUInt64BE(0) : raw.readBigUInt64LE(0));
+        ? (this.byteswap ? raw.readBigInt64LE(0)  : raw.readBigInt64BE(0))
+        : (this.byteswap ? raw.readBigUInt64LE(0) : raw.readBigUInt64BE(0));
       default: throw new Error(`Ungültige INTN-Länge: ${raw.length}`);
     }
   }
 
   private _decodeDecn(raw: Buffer, scale: number): string {
     const negative = raw[0] === 0x01;
-    // Magnitude is stored little-endian in raw[1:]
+    
+    // Magnitude ist nun Big-Endian gespeichert in raw[1:]
     let mag = 0n;
-    for (let i = raw.length - 1; i >= 1; i--) {
+    for (let i = 1; i < raw.length; i++) {
       mag = (mag << 8n) | BigInt(raw[i]);
     }
+
     const str = this._decnToString(mag, scale);
     return negative ? '-' + str : str;
   }
@@ -110,14 +112,14 @@ export class TypeMapper {
   }
 
   private _decodeMoney8(raw: Buffer): string {
-    const hi = raw.readInt32LE(0);
-    const lo = raw.readUInt32LE(4);
+    const hi = raw.readInt32BE(0);
+    const lo = raw.readUInt32BE(4);
     const cents = (BigInt(hi) << 32n) | BigInt(lo);
     return this._moneyToString(cents);
   }
 
   private _decodeMoney4(raw: Buffer): string {
-    return this._moneyToString(BigInt(raw.readInt32LE(0)));
+    return this._moneyToString(BigInt(raw.readInt32BE(0)));
   }
 
   private _moneyToString(cents: bigint): string {
@@ -128,23 +130,23 @@ export class TypeMapper {
   }
 
   private _decodeDate(raw: Buffer): Date {
-    return new Date(BASE_DATE_MS + raw.readUInt32LE(0) * 86_400_000);
+    return new Date(BASE_DATE_MS + raw.readUInt32BE(0) * 86_400_000);
   }
 
   private _decodeTime(raw: Buffer): Date {
-    const ms = Math.round(raw.readUInt32LE(0) / 300 * 1000);
+    const ms = Math.round(raw.readUInt32BE(0) / 300 * 1000);
     return new Date(BASE_DATE_MS + ms);
   }
 
   private _decodeDatetime(raw: Buffer): Date {
-    const dayMs  = raw.readInt32LE(0) * 86_400_000;
-    const timeMs = Math.round(raw.readUInt32LE(4) / 300 * 1000);
+    const dayMs  = raw.readInt32BE(0) * 86_400_000;
+    const timeMs = Math.round(raw.readUInt32BE(4) / 300 * 1000);
     return new Date(BASE_DATE_MS + dayMs + timeMs);
   }
 
   private _decodeShortDate(raw: Buffer): Date {
-    const dayMs = raw.readUInt16LE(0) * 86_400_000;
-    const minMs = raw.readUInt16LE(2) * 60_000;
+    const dayMs = raw.readUInt16BE(0) * 86_400_000;
+    const minMs = raw.readUInt16BE(2) * 60_000;
     return new Date(BASE_DATE_MS + dayMs + minMs);
   }
 
@@ -162,51 +164,51 @@ export class TypeMapper {
         b.writeUInt8(value ? 1 : 0, 0);
         break;
       case DataType.INT2:
-        this.byteswap ? b.writeInt16BE(Number(value), 0) : b.writeInt16LE(Number(value), 0);
+        this.byteswap ? b.writeInt16LE(Number(value), 0) : b.writeInt16BE(Number(value), 0);
         break;
       case DataType.INT4:
-        this.byteswap ? b.writeInt32BE(Number(value), 0) : b.writeInt32LE(Number(value), 0);
+        this.byteswap ? b.writeInt32LE(Number(value), 0) : b.writeInt32BE(Number(value), 0);
         break;
       case DataType.INT8: {
         const v = typeof value === 'bigint' ? value : BigInt(value as number);
-        this.byteswap ? b.writeBigInt64BE(v, 0) : b.writeBigInt64LE(v, 0);
+        this.byteswap ? b.writeBigInt64LE(v, 0) : b.writeBigInt64BE(v, 0);
         break;
       }
       case DataType.UINT2:
-        this.byteswap ? b.writeUInt16BE(Number(value), 0) : b.writeUInt16LE(Number(value), 0);
+        this.byteswap ? b.writeUInt16LE(Number(value), 0) : b.writeUInt16BE(Number(value), 0);
         break;
       case DataType.UINT4:
-        this.byteswap ? b.writeUInt32BE(Number(value), 0) : b.writeUInt32LE(Number(value), 0);
+        this.byteswap ? b.writeUInt32LE(Number(value), 0) : b.writeUInt32BE(Number(value), 0);
         break;
       case DataType.UINT8: {
         const v = typeof value === 'bigint' ? value : BigInt(value as number);
-        this.byteswap ? b.writeBigUInt64BE(v, 0) : b.writeBigUInt64LE(v, 0);
+        this.byteswap ? b.writeBigUInt64LE(v, 0) : b.writeBigUInt64BE(v, 0);
         break;
       }
       case DataType.FLT4:
-        this.byteswap ? b.writeFloatBE(Number(value), 0) : b.writeFloatLE(Number(value), 0);
+        this.byteswap ? b.writeFloatLE(Number(value), 0) : b.writeFloatBE(Number(value), 0);
         break;
       case DataType.FLT8:
-        this.byteswap ? b.writeDoubleBE(Number(value), 0) : b.writeDoubleLE(Number(value), 0);
+        this.byteswap ? b.writeDoubleLE(Number(value), 0) : b.writeDoubleBE(Number(value), 0);
         break;
       case DataType.SHORTMONEY:
-        b.writeInt32LE(Math.round(Number(value) * 10000), 0);
+        b.writeInt32BE(Math.round(Number(value) * 10000), 0);
         break;
       case DataType.MONEY: {
         const cents = BigInt(Math.round(Number(value) * 10000));
-        b.writeInt32LE(Number(cents >> 32n) | 0, 0);
-        b.writeUInt32LE(Number(cents & 0xFFFF_FFFFn) >>> 0, 4);
+        b.writeInt32BE(Number(cents >> 32n) | 0, 0);
+        b.writeUInt32BE(Number(cents & 0xFFFF_FFFFn) >>> 0, 4);
         break;
       }
       case DataType.DATE: {
         const d = value as Date;
-        b.writeUInt32LE(Math.floor((d.getTime() - BASE_DATE_MS) / 86_400_000), 0);
+        b.writeUInt32BE(Math.floor((d.getTime() - BASE_DATE_MS) / 86_400_000), 0);
         break;
       }
       case DataType.TIME: {
         const d = value as Date;
         const ticks = (d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds()) * 300;
-        b.writeUInt32LE(ticks, 0);
+        b.writeUInt32BE(ticks, 0);
         break;
       }
       case DataType.DATETIME: {
@@ -214,14 +216,14 @@ export class TypeMapper {
         const days  = Math.floor((d.getTime() - BASE_DATE_MS) / 86_400_000);
         const ms    = d.getTime() - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
         const ticks = Math.round(ms / 1000 * 300);
-        b.writeInt32LE(days, 0);
-        b.writeUInt32LE(ticks, 4);
+        b.writeInt32BE(days, 0);
+        b.writeUInt32BE(ticks, 4);
         break;
       }
       case DataType.SHORTDATE: {
         const d = value as Date;
-        b.writeUInt16LE(Math.floor((d.getTime() - BASE_DATE_MS) / 86_400_000), 0);
-        b.writeUInt16LE(d.getUTCHours() * 60 + d.getUTCMinutes(), 2);
+        b.writeUInt16BE(Math.floor((d.getTime() - BASE_DATE_MS) / 86_400_000), 0);
+        b.writeUInt16BE(d.getUTCHours() * 60 + d.getUTCMinutes(), 2);
         break;
       }
     }
@@ -254,11 +256,11 @@ export class TypeMapper {
         const n = df.maxLength;
         const b = Buffer.alloc(n);
         if (n === 1)      b.writeUInt8(Number(value), 0);
-        else if (n === 2) this.byteswap ? b.writeInt16BE(Number(value), 0) : b.writeInt16LE(Number(value), 0);
-        else if (n === 4) this.byteswap ? b.writeInt32BE(Number(value), 0) : b.writeInt32LE(Number(value), 0);
+        else if (n === 2) this.byteswap ? b.writeInt16LE(Number(value), 0) : b.writeInt16BE(Number(value), 0);
+        else if (n === 4) this.byteswap ? b.writeInt32LE(Number(value), 0) : b.writeInt32BE(Number(value), 0);
         else {
           const v = typeof value === 'bigint' ? value : BigInt(value as number);
-          this.byteswap ? b.writeBigInt64BE(v, 0) : b.writeBigInt64LE(v, 0);
+          this.byteswap ? b.writeBigInt64LE(v, 0) : b.writeBigInt64BE(v, 0);
         }
         return Buffer.concat([Buffer.from([n]), b]);
       }
@@ -266,19 +268,19 @@ export class TypeMapper {
         const n = df.maxLength;
         const b = Buffer.alloc(n);
         if (n === 1)      b.writeUInt8(Number(value), 0);
-        else if (n === 2) this.byteswap ? b.writeUInt16BE(Number(value), 0) : b.writeUInt16LE(Number(value), 0);
-        else if (n === 4) this.byteswap ? b.writeUInt32BE(Number(value), 0) : b.writeUInt32LE(Number(value), 0);
+        else if (n === 2) this.byteswap ? b.writeUInt16LE(Number(value), 0) : b.writeUInt16BE(Number(value), 0);
+        else if (n === 4) this.byteswap ? b.writeUInt32LE(Number(value), 0) : b.writeUInt32BE(Number(value), 0);
         else {
           const v = typeof value === 'bigint' ? value : BigInt(value as number);
-          this.byteswap ? b.writeBigUInt64BE(v, 0) : b.writeBigUInt64LE(v, 0);
+          this.byteswap ? b.writeBigUInt64LE(v, 0) : b.writeBigUInt64BE(v, 0);
         }
         return Buffer.concat([Buffer.from([n]), b]);
       }
       case DataType.FLTN: {
         const n = df.maxLength;
         const b = Buffer.alloc(n);
-        if (n === 4) this.byteswap ? b.writeFloatBE(Number(value), 0)  : b.writeFloatLE(Number(value), 0);
-        else         this.byteswap ? b.writeDoubleBE(Number(value), 0) : b.writeDoubleLE(Number(value), 0);
+        if (n === 4) this.byteswap ? b.writeFloatLE(Number(value), 0)  : b.writeFloatBE(Number(value), 0);
+        else         this.byteswap ? b.writeDoubleLE(Number(value), 0) : b.writeDoubleBE(Number(value), 0);
         return Buffer.concat([Buffer.from([n]), b]);
       }
       case DataType.MONEYN: {

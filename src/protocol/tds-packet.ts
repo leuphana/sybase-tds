@@ -18,7 +18,7 @@ export class TdsPacket {
   constructor(
     readonly pduType: PduType,
     readonly body: Buffer,
-    readonly packetNumber = 1,
+    readonly packetNumber = 0,
     readonly isLast = true,
   ) {}
 

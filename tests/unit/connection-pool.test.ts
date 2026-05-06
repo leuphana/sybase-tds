@@ -29,11 +29,11 @@ let connections: Connection[];
 beforeEach(() => {
   connections = [];
   connectSpy = jest
-    .spyOn(Connection, 'connect')
-    .mockImplementation(async () => {
-      const c = mockConn();
-      connections.push(c);
-      return c;
+    .spyOn(Connection.prototype, 'connect')
+    .mockImplementation(async function(this: Connection) {
+      connections.push(this);
+      Object.assign(this, mockConn());
+      return this;
     });
 });
 

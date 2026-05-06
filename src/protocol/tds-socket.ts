@@ -2,6 +2,20 @@ import * as net from 'net';
 import { PduType, DEFAULT_PACKET_SIZE } from '../constants/tds-const';
 import { TdsPacket } from './tds-packet';
 
+const DEBUG = process.env['TDS_DEBUG'] === '1';
+console.log('TDS_DEBUG:', DEBUG);
+
+function hexDump(label: string, buf: Buffer): void {
+  const lines: string[] = [`\n=== ${label} (${buf.length} bytes) ===`];
+  for (let i = 0; i < buf.length; i += 16) {
+    const slice  = buf.slice(i, i + 16);
+    const hex    = Array.from(slice).map(b => b.toString(16).padStart(2, '0')).join(' ');
+    const ascii  = Array.from(slice).map(b => b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : '.').join('');
+    lines.push(`  ${i.toString(16).padStart(4, '0')}  ${hex.padEnd(47)}  ${ascii}`);
+  }
+  console.error(lines.join('\n'));
+}
+
 // ---------------------------------------------------------------------------
 // Public types
 // ---------------------------------------------------------------------------
@@ -100,7 +114,7 @@ export class TdsSocket {
   async send(pduType: PduType, data: Buffer): Promise<void> {
     const maxBody = this.packetSize - TdsPacket.HEADER_SIZE;
     let offset = 0;
-    let seqNum = 1;
+    let seqNum = 0;
 
     do {
       const end    = Math.min(offset + maxBody, data.length);
@@ -108,7 +122,9 @@ export class TdsSocket {
       const isLast = end >= data.length;
       const packet = new TdsPacket(pduType, body, seqNum, isLast);
 
-      await this._writeRaw(packet.toBuffer());
+      const raw = packet.toBuffer();
+      if (DEBUG) hexDump(`TX packet seq=${seqNum} pdu=0x${pduType.toString(16)} eom=${isLast}`, raw);
+      await this._writeRaw(raw);
 
       offset = end;
       seqNum++;
@@ -197,6 +213,7 @@ export class TdsSocket {
   }
 
   private _deliver(msg: TdsMessage): void {
+    if (DEBUG) hexDump(`RX message pdu=0x${msg.pduType.toString(16)}`, msg.data);
     const waiter = this._waiters.shift();
     if (waiter) {
       waiter.resolve(msg);

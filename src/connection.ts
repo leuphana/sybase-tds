@@ -40,22 +40,28 @@ export interface QueryResult {
 // ---------------------------------------------------------------------------
 
 export class Connection {
-  private _socket: TdsSocket;
+  // Assigned by connect() – valid to use after that call.
+  private _socket!: TdsSocket;
+
   private _parser: TokenParser;
   readonly _mapper: TypeMapper;
   private _encoding: BufferEncoding = 'utf8';
 
-  constructor(socket: TdsSocket, byteswap = false) {
-    this._socket = socket;
-    this._parser = new TokenParser();
-    this._mapper = new TypeMapper(byteswap);
+  private readonly _options: ConnectOptions;
+  private readonly _rawSocket?: RawSocket;
+
+  constructor(options: ConnectOptions, rawSocket?: RawSocket) {
+    this._options   = options;
+    this._rawSocket = rawSocket;
+    this._parser    = new TokenParser();
+    this._mapper    = new TypeMapper(options.byteswap ?? false);
   }
 
   // -------------------------------------------------------------------------
-  // Static factory
+  // connect()
   // -------------------------------------------------------------------------
 
-  static async connect(options: ConnectOptions, rawSocket?: RawSocket): Promise<Connection> {
+  async connect(): Promise<this> {
     const {
       host,
       port       = 5000,
@@ -65,11 +71,11 @@ export class Connection {
       language,
       packetSize,
       byteswap   = false,
-    } = options;
+    } = this._options;
 
     let socket: TdsSocket;
-    if (rawSocket !== undefined) {
-      socket = new TdsSocket(rawSocket, { packetSize });
+    if (this._rawSocket !== undefined) {
+      socket = new TdsSocket(this._rawSocket, { packetSize });
     } else {
       socket = await TdsSocket.connect(host, port, { packetSize });
     }
@@ -89,23 +95,29 @@ export class Connection {
       new CapabilityToken().build(),
     ]);
 
-    await socket.send(PduType.BUF_LOGIN, loginBuf);
+    try {
+      await socket.send(PduType.BUF_LOGIN, loginBuf);
 
-    const msg    = await socket.receive();
-    const tokens = new TokenParser().parse(msg.data);
+      const msg    = await socket.receive();
+      const tokens = new TokenParser().parse(msg.data);
 
-    const loginAckToken = tokens.find(t => t.type === 'loginAck');
-    const eedToken      = tokens.find(t => t.type === 'eed');
+      const loginAckToken = tokens.find(t => t.type === 'loginAck');
+      const eedToken      = tokens.find(t => t.type === 'eed');
 
-    if (eedToken && eedToken.type === 'eed') {
-      throw new SybaseError(eedToken.data);
+      if (eedToken && eedToken.type === 'eed' && eedToken.data.isError()) {
+        throw new SybaseError(eedToken.data);
+      }
+
+      if (!loginAckToken || loginAckToken.type !== 'loginAck' || !loginAckToken.data.succeeded()) {
+        throw new Error('Login fehlgeschlagen');
+      }
+    } catch (err) {
+      await socket.close();
+      throw err;
     }
 
-    if (!loginAckToken || loginAckToken.type !== 'loginAck' || !loginAckToken.data.succeeded()) {
-      throw new Error('Login fehlgeschlagen');
-    }
-
-    return new Connection(socket, byteswap);
+    this._socket = socket;
+    return this;
   }
 
   // -------------------------------------------------------------------------
@@ -113,7 +125,7 @@ export class Connection {
   // -------------------------------------------------------------------------
 
   async query(sql: string): Promise<QueryResult> {
-    await this._socket.send(PduType.BUF_LANG, LanguageToken.build(sql, false, this._encoding));
+    await this._socket.send(PduType.BUF_NORMAL, LanguageToken.build(sql, false, this._encoding));
     return this._collectResult();
   }
 

@@ -23,10 +23,7 @@ function makeConnectedSocket(mock: MockSocket): TdsSocket {
 async function makeConnection(mock: MockSocket): Promise<Connection> {
   // Queue login response
   mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-  return Connection.connect(
-    { host: 'localhost', username: 'sa' },
-    mock,
-  );
+  return new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 }
 
 // ===========================================================================
@@ -41,14 +38,14 @@ describe('Connection', () => {
     it('gibt eine Connection zurück bei erfolgreichem Login', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
       expect(conn).toBeInstanceOf(Connection);
     });
 
     it('schreibt Login + Capability in TDS-Pakete (Login-Body > maxBody → 2 Pakete)', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
       // Login-Body (568 B) + CapabilityToken (~31 B) > 504 B maxBody → 2 Pakete
       expect(mock.written.length).toBeGreaterThanOrEqual(2);
     });
@@ -57,7 +54,7 @@ describe('Connection', () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([eedBuf(4002, 'Login failed'), doneBuf()]));
       await expect(
-        Connection.connect({ host: 'localhost', username: 'sa' }, mock),
+        new Connection({ host: 'localhost', username: 'sa' }, mock).connect(),
       ).rejects.toBeInstanceOf(SybaseError);
     });
 
@@ -68,7 +65,7 @@ describe('Connection', () => {
         doneBuf(),
       ]));
       await expect(
-        Connection.connect({ host: 'localhost', username: 'sa' }, mock),
+        new Connection({ host: 'localhost', username: 'sa' }, mock).connect(),
       ).rejects.toThrow('Login fehlgeschlagen');
     });
 
@@ -77,7 +74,7 @@ describe('Connection', () => {
       mock.queueResponse(Buffer.concat([eedBuf(4002, 'Login failed'), doneBuf()]));
       let err: SybaseError | null = null;
       try {
-        await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+        await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
       } catch (e) {
         err = e as SybaseError;
       }
@@ -93,7 +90,7 @@ describe('Connection', () => {
     it('gibt QueryResult mit rows zurück', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(queryResponseBuf(42, 'alice'));
       const result = await conn.query('SELECT id, name FROM users');
@@ -106,7 +103,7 @@ describe('Connection', () => {
     it('gibt rowCount aus DONE-Token zurück', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(queryResponseBuf(1, 'x', 3));
       const result = await conn.query('SELECT ...');
@@ -116,7 +113,7 @@ describe('Connection', () => {
     it('gibt leeres rows-Array bei INSERT/UPDATE zurück', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(doneOnlyBuf(5));
       const result = await conn.query('INSERT INTO ...');
@@ -127,7 +124,7 @@ describe('Connection', () => {
     it('wirft SybaseError bei EED-Antwort', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(Buffer.concat([eedBuf(208, 'Object not found'), doneBuf()]));
       await expect(conn.query('SELECT ...')).rejects.toBeInstanceOf(SybaseError);
@@ -136,7 +133,7 @@ describe('Connection', () => {
     it('SybaseError.message enthält Fehlertext', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(Buffer.concat([eedBuf(208, 'Object not found'), doneBuf()]));
       let err: SybaseError | null = null;
@@ -153,7 +150,7 @@ describe('Connection', () => {
     it('sendet LOGOUT-Paket (zweites geschriebenes Paket)', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       await conn.end();
       // letztes geschriebenes Paket = LOGOUT
@@ -173,7 +170,7 @@ describe('Connection', () => {
     beforeEach(async () => {
       mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+      conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
     });
 
     it('cursor() gibt eine Cursor-Instanz zurück', () => {

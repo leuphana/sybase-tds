@@ -5,11 +5,12 @@
 // ---------------------------------------------------------------------------
 
 export enum PduType {
-  BUF_LANG    = 0x01,
+  BUF_LANG    = 0x01,  // TDS 4.x raw SQL (legacy)
   BUF_LOGIN   = 0x02,
   BUF_RPC     = 0x03,
   BUF_ATTN    = 0x06,
   BUF_LOGOUT  = 0x0D,
+  BUF_NORMAL  = 0x0F,  // TDS 5.0 token-based requests (LANGUAGE, DYNAMIC, cursor tokens, …)
 }
 
 // ---------------------------------------------------------------------------

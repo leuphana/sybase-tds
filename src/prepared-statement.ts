@@ -38,12 +38,14 @@ export class PreparedStatement {
 
     const hasParams = params.length > 0;
 
+    const proc = 'create proc ' + name + ' as ' + sql;
+
     // status = 0 for a normal prepare; DynamicToken.prepare expects (name, sql, status, encoding)
-    const dynBuf = DynamicToken.prepare(name, sql, hasParams ? 1 : 0);
+    const dynBuf = DynamicToken.prepare(name, proc, hasParams ? 1 : 0);
     const fmtBuf = hasParams ? ParamFmtToken.build(params) : Buffer.alloc(0);
 
     const payload = Buffer.concat([dynBuf, fmtBuf]);
-    await conn._send(PduType.BUF_LANG, payload);
+    await conn._send(PduType.BUF_NORMAL, payload);
     await conn._collectResult();
 
     return stmt;
@@ -62,16 +64,17 @@ export class PreparedStatement {
 
     let payload: Buffer;
     if (hasParams) {
+      const fmtBuf = ParamFmtToken.build(this._params);
       const markerBuf = ParamsToken.buildMarker();
       const paramBytes = Buffer.concat(
         this._params.map((df, i) => this._conn._mapper.encodeParam(df, values[i])),
       );
-      payload = Buffer.concat([dynBuf, markerBuf, paramBytes]);
+      payload = Buffer.concat([dynBuf, fmtBuf, markerBuf, paramBytes]);
     } else {
       payload = dynBuf;
     }
 
-    await this._conn._send(PduType.BUF_LANG, payload);
+    await this._conn._send(PduType.BUF_NORMAL, payload);
     return this._conn._collectResult();
   }
 

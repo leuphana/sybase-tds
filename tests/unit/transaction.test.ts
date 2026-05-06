@@ -13,7 +13,7 @@ import {
 async function makeConn(): Promise<{ conn: Connection; mock: MockSocket }> {
   const mock = new MockSocket();
   mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-  const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+  const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
   return { conn, mock };
 }
 

@@ -17,7 +17,7 @@ import {
 async function makeConn(): Promise<{ conn: Connection; mock: MockSocket }> {
   const mock = new MockSocket();
   mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-  const conn = await Connection.connect({ host: 'localhost', username: 'sa' }, mock);
+  const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
   return { conn, mock };
 }
 
@@ -54,14 +54,14 @@ describe('PreparedStatement', () => {
       expect(pkt[8]).toBe(TokenType.DYNAMIC);
     });
 
-    it('PREPARE mit Params sendet PARAMFMT hinter DYNAMIC', async () => {
+    it('PREPARE sendet kein PARAMFMT (Typen werden erst bei EXECUTE übermittelt)', async () => {
       const { conn, mock } = await makeConn();
       mock.queueResponse(doneOnlyBuf());
       await conn.prepare('SELECT ?', [new DataFormat(DataType.INT4)]);
-      const pkt   = mock.written[mock.written.length - 1];
-      const body  = pkt.slice(8);
-      // Body: [DYNAMIC token...][PARAMFMT(0xEC)...]
-      expect(body.includes(TokenType.PARAMFMT)).toBe(true);
+      const pkt  = mock.written[mock.written.length - 1];
+      const body = pkt.slice(8);
+      // PREPARE darf kein PARAMFMT-Token enthalten
+      expect(body.includes(TokenType.PARAMFMT)).toBe(false);
     });
   });
 
@@ -81,7 +81,7 @@ describe('PreparedStatement', () => {
       expect(result.rows[0][0]).toBe(7);
     });
 
-    it('execute() mit Params sendet PARAMS-Marker (0xD7)', async () => {
+    it('execute() mit Params sendet PARAMFMT (0xEC) + PARAMS-Marker (0xD7)', async () => {
       const { conn, mock } = await makeConn();
       mock.queueResponse(doneOnlyBuf());
       const stmt = await conn.prepare('SELECT ?', [new DataFormat(DataType.INT4)]);
@@ -90,6 +90,7 @@ describe('PreparedStatement', () => {
       await stmt.execute([42]);
       const pkt  = mock.written[mock.written.length - 1];
       const body = pkt.slice(8);
+      expect(body.includes(TokenType.PARAMFMT)).toBe(true);
       expect(body.includes(TokenType.PARAMS)).toBe(true);
     });
 

@@ -35,7 +35,7 @@ export class Cursor {
     const openBuf    = CursorTokens.curOpen(0, { name: this._name });
 
     const payload = Buffer.concat([declareBuf, openBuf]);
-    await this._conn._send(PduType.BUF_LANG, payload);
+    await this._conn._send(PduType.BUF_NORMAL, payload);
     await this._conn._collectResult();
 
     this._open = true;
@@ -49,7 +49,7 @@ export class Cursor {
     if (!this._open) throw new Error('Cursor ist nicht geöffnet');
 
     const fetchBuf = CursorTokens.curFetch(0, FetchType.NEXT, { name: this._name });
-    await this._conn._send(PduType.BUF_LANG, fetchBuf);
+    await this._conn._send(PduType.BUF_NORMAL, fetchBuf);
 
     const result = await this._conn._collectResult();
     return result.rows;
@@ -63,7 +63,7 @@ export class Cursor {
     if (!this._open) return;
 
     const closeBuf = CursorTokens.curClose(0, { name: this._name, dealloc: true });
-    await this._conn._send(PduType.BUF_LANG, closeBuf);
+    await this._conn._send(PduType.BUF_NORMAL, closeBuf);
     await this._conn._collectResult();
 
     this._open = false;
