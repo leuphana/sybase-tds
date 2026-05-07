@@ -2,7 +2,7 @@
 
 TypeORM support for Sybase ASE is planned as a **separate npm package** `typeorm-sybase`.
 
-This library (`node-sybase`) provides only the low-level TDS 5.0 driver. The TypeORM adapter will be built on top of it.
+This library (`sybase-tds`) provides only the low-level TDS 5.0 driver. The TypeORM adapter will be built on top of it.
 
 ## Planned package: `typeorm-sybase`
 

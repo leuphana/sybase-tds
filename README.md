@@ -1,4 +1,4 @@
-# node-sybase
+# sybase-tds
 
 TDS 5.0 Sybase ASE database driver for Node.js/TypeScript.
 
@@ -10,13 +10,13 @@ TDS 5.0 Sybase ASE database driver for Node.js/TypeScript.
 ## Installation
 
 ```bash
-npm install node-sybase
+npm install sybase-tds
 ```
 
 ## Quick start
 
 ```typescript
-import { Connection } from 'node-sybase';
+import { Connection } from 'sybase-tds';
 
 const conn = await Connection.connect({
   host:     'myserver',
@@ -32,8 +32,8 @@ for (const [id, name] of rows) {
 }
 
 // Prepared statement
-import { DataFormat } from 'node-sybase';
-import { DataType }   from 'node-sybase/constants';
+import { DataFormat } from 'sybase-tds';
+import { DataType }   from 'sybase-tds/constants';
 
 const stmt = await conn.prepare(
   'SELECT * FROM users WHERE id = ?',
@@ -58,7 +58,7 @@ await conn.end();
 ## Connection pool
 
 ```typescript
-import { ConnectionPool } from 'node-sybase';
+import { ConnectionPool } from 'sybase-tds';
 
 const pool = ConnectionPool.create(
   { host: 'myserver', port: 5000, username: 'sa', password: 'secret' },
@@ -105,7 +105,7 @@ await cursor.close();
 All server errors are thrown as `SybaseError` which extends `Error`:
 
 ```typescript
-import { SybaseError } from 'node-sybase';
+import { SybaseError } from 'sybase-tds';
 
 try {
   await conn.query('SELECT FROM'); // syntax error

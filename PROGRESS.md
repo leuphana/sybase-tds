@@ -1,4 +1,4 @@
-# node-sybase – Entwicklungsfortschritt
+# sybase-tds – Entwicklungsfortschritt
 
 TDS 5.0 Sybase ASE Datenbanktreiber für Node.js/TypeScript.
 Implementierung nach dem **Cleanroom-Prinzip** ausschließlich auf Basis der Markdown-Dokumentation.
@@ -125,7 +125,7 @@ Abzudeckende TDS-Typen:
 ## Projektstruktur
 
 ```
-node-sybase/
+sybase-tds/
 ├── src/
 │   ├── constants/
 │   │   └── tds-const.ts

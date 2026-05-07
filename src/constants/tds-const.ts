@@ -405,5 +405,5 @@ export const DEFAULT_PACKET_SIZE = 512;
 export const DEFAULT_PORT       = 5000;
 export const DEFAULT_CHARSET    = 'utf8';
 export const DEFAULT_LANGUAGE   = 'us_english';
-export const PROGRAM_NAME       = 'node-sybase';
+export const PROGRAM_NAME       = 'sybase-tds';
 export const PROGRAM_NAME_MAX   = 10;

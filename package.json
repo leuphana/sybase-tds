@@ -1,5 +1,5 @@
 {
-  "name": "node-sybase",
+  "name": "sybase-tds",
   "version": "0.1.0",
   "description": "TDS 5.0 Sybase ASE driver for Node.js – pure TypeScript, cleanroom implementation",
   "main": "dist/index.js",
@@ -26,6 +26,13 @@
   ],
   "author": "Leon Strauß",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/leuphana/sybase-tds.git"
+  },
+  "bugs": {
+    "url": "https://github.com/leuphana/sybase-tds/issues"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
