@@ -37,7 +37,7 @@ import { DataType }   from 'node-sybase/constants';
 
 const stmt = await conn.prepare(
   'SELECT * FROM users WHERE id = ?',
-  [new DataFormat(DataType.INT4)],
+  [new DataFormat(DataType.INT4)], // Optional
 );
 const result = await stmt.execute([42]);
 await stmt.close();
