@@ -1,11 +1,12 @@
 import * as os from 'os';
-import { PduType } from './constants/tds-const';
+import { PduType, OptionId } from './constants/tds-const';
 import { TdsSocket, RawSocket } from './protocol/tds-socket';
 import { TokenParser } from './protocol/response/token-parser';
 import { LoginToken } from './protocol/tokens/login-token';
 import { CapabilityToken } from './protocol/tokens/capability-token';
 import { LanguageToken } from './protocol/tokens/language-token';
 import { LogoutToken } from './protocol/tokens/logout-token';
+import { OptionCmdToken } from './protocol/tokens/option-cmd-token';
 import { DataFormat } from './types/data-format';
 import { TypeMapper, JsValue } from './types/type-mapper';
 import { SybaseError } from './error';
@@ -117,6 +118,12 @@ export class Connection {
     }
 
     this._socket = socket;
+
+    // Session setup: enable ANSI quoted identifiers so "double-quoted" names work
+    const sessionBuf = OptionCmdToken.build(OptionId.QUOTED_IDENT, 1);
+    await socket.send(PduType.BUF_NORMAL, sessionBuf);
+    await this._collectResult();
+
     return this;
   }
 

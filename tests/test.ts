@@ -12,8 +12,6 @@ const PORT = parseInt(process.env['SYBASE_TEST_PORT'] ?? '5000', 10);
 
 const DEBUG = process.env['TDS_DEBUG'] === '1';
 
-console.log('TDS_DEBUG:', DEBUG);
-
 async function main() {
   const conn = new Connection({
     host:     HOST!,
@@ -21,18 +19,9 @@ async function main() {
     username: USER,
     password: PASS
   });
-
-  console.time();
   await conn.connect();
-
-  console.timeLog()
-
-  const stm = await conn.prepare('select * from dbo.borrower b where b.borrower_bar = ?');
-  console.log('PreparedStatement erstellt');
-  const result = await stm.execute(['311083758243']);
-
-  console.timeEnd();
-  console.log('Ergebnis:', result);
+  const stm = await conn.query('SELECT "Borrower"."address_id_nr" AS "Borrower_address_id_nr", "Borrower"."borrower_bar" AS "Borrower_borrower_bar", "Borrower"."iln" AS "Borrower_iln" FROM "borrower" "Borrower"');
+  console.log('Ergebnis:', stm);
 
   await conn.end();
 }

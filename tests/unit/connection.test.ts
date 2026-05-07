@@ -90,7 +90,7 @@ describe('Connection', () => {
     it('gibt QueryResult mit rows zurück', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
-      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
+      const conn = await new Connection({ host: 'localhost', username: 'sa', byteswap: true }, mock).connect();
 
       mock.queueResponse(queryResponseBuf(42, 'alice'));
       const result = await conn.query('SELECT id, name FROM users');

@@ -3,7 +3,6 @@ import { PduType, DEFAULT_PACKET_SIZE } from '../constants/tds-const';
 import { TdsPacket } from './tds-packet';
 
 const DEBUG = process.env['TDS_DEBUG'] === '1';
-console.log('TDS_DEBUG:', DEBUG);
 
 function hexDump(label: string, buf: Buffer): void {
   const lines: string[] = [`\n=== ${label} (${buf.length} bytes) ===`];
