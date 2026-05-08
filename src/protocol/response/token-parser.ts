@@ -95,15 +95,16 @@ export class TokenParser {
         // ORDERBY, TABNAME, COLNAME, COLINFO, RETURNSTATUS, PROCID, DYNAMIC_ACK,
         // COLFMT (0xAE – TDS 4.x column-format metadata Sybase ASE sends alongside ROWFMT).
         case TokenType.CAPABILITY:
-        case TokenType.ORDERBY:
-        case 0xA4: // TABNAME
-        case 0xA5: // COLNAME
-        case 0xA6: // OPTIONCMD (server echo)
+        case TokenType.UNKONWN1:
+        case TokenType.TABNAME:
+        case TokenType.COLINFO: // COLINFO
+        case TokenType.OPTIONCMD: // OPTIONCMD (server echo)
         case 0xAE: // COLFMT (TDS 4.x compat metadata)
         case 0x79: // RETURNSTATUS
         case 0x7C: // PROCID
         case 0x62: // DYNAMIC2 ACK
         case 0xE7: // DYNAMIC ACK
+        case TokenType.ORDERBY:
         case TokenType.PARAMFMT:
         {
           const bodyLen = data.readUInt16BE(pos + 1);

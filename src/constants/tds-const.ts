@@ -69,8 +69,11 @@ export enum TokenType {
   ALTROW      = 0xD3,
   RETURNSTATUS = 0x79,
   RETURNVALUE  = 0x7B,
-  ORDERBY      = 0xEB,
-  TABNAME      = 0xE9,
+  UNKONWN1     = 0xEB,
+  TABNAME      = 0xA4,
+  ORDERBY     = 0xA9,
+  ORDERBY2    = 0x22,
+  COLINFO     = 0xa5,
 }
 
 // ---------------------------------------------------------------------------
