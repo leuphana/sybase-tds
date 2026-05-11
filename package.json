@@ -1,6 +1,6 @@
 {
   "name": "sybase-tds",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "TDS 5.0 Sybase ASE driver for Node.js – pure TypeScript, cleanroom implementation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
