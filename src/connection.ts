@@ -145,7 +145,7 @@ export class Connection {
   }
 
   async _collectResult(): Promise<QueryResult> {
-    const columns: DataFormat[] = [];
+    const columns: DataFormat[] = [...this._parser.lastColumns];
     const rows: JsValue[][]     = [];
     let rowCount                = 0;
 

@@ -27,21 +27,13 @@ export class ConnectionPool {
   private _closed = false;
   private _idleTimers: Map<Connection, ReturnType<typeof setTimeout>> = new Map();
 
-  private constructor(options: ConnectOptions, poolOptions: PoolOptions = {}) {
+  public constructor(options: ConnectOptions, poolOptions: PoolOptions = {}) {
     this._options     = options;
     this._poolOptions = {
       min:         poolOptions.min         ?? 0,
       max:         poolOptions.max         ?? 10,
       idleTimeout: poolOptions.idleTimeout ?? 60_000,
     };
-  }
-
-  // -------------------------------------------------------------------------
-  // Static factory
-  // -------------------------------------------------------------------------
-
-  static create(options: ConnectOptions, poolOptions: PoolOptions = {}): ConnectionPool {
-    return new ConnectionPool(options, poolOptions);
   }
 
   // -------------------------------------------------------------------------

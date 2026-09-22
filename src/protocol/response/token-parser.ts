@@ -27,6 +27,8 @@ export type TdsToken =
 export class TokenParser {
   private _columns: DataFormat[] = [];
 
+  get lastColumns(): DataFormat[] { return this._columns; }
+
   /**
    * Parses a complete TDS message body (from TdsSocket.receive().data)
    * and returns an array of all contained tokens.
@@ -94,6 +96,7 @@ export class TokenParser {
         // CAPABILITY (server echoes its capabilities during login),
         // ORDERBY, TABNAME, COLNAME, COLINFO, RETURNSTATUS, PROCID, DYNAMIC_ACK,
         // COLFMT (0xAE – TDS 4.x column-format metadata Sybase ASE sends alongside ROWFMT).
+        // CURINFO / CURINFO3 – server cursor-state notifications sent after cursor operations.
         case TokenType.CAPABILITY:
         case TokenType.UNKONWN1:
         case TokenType.TABNAME:
@@ -106,6 +109,8 @@ export class TokenParser {
         case 0xE7: // DYNAMIC ACK
         case TokenType.ORDERBY:
         case TokenType.PARAMFMT:
+        case TokenType.CURINFO:
+        case TokenType.CURINFO3:
         {
           const bodyLen = data.readUInt16BE(pos + 1);
           pos += 3 + bodyLen;

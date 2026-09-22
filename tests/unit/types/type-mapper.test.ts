@@ -17,79 +17,92 @@ function u64le(v: bigint) { const b = Buffer.alloc(8); b.writeBigUInt64LE(v, 0);
 function f32le(v: number) { const b = Buffer.alloc(4); b.writeFloatLE(v, 0); return b; }
 function f64le(v: number) { const b = Buffer.alloc(8); b.writeDoubleLE(v, 0); return b; }
 
-/** DECN-Rohdaten: sign(1) + magnitude LE (0 padding) */
+// DECN/NUMN, MONEY/SHORTMONEY und DATE/TIME-Varianten werden in TypeMapper.decode()
+// unabhängig vom byteswap-Flag immer Big-Endian gelesen (_decodeDecn/_decodeMoney*/
+// _decodeDate & Co. nutzen ausschließlich readXxxBE) — verifiziert gegen den echten
+// ASE-15.7-Server in tests/integration/datatypes.test.ts (z.B. "DECIMAL(10,2): 99.99").
+// Die Rohdaten-Helfer hier müssen deshalb Big-Endian erzeugen, unabhängig davon,
+// welche TypeMapper-Instanz (m/mBe) zum Decode verwendet wird.
+
+/** DECN-Rohdaten: sign(1) + magnitude BE (0 padding) */
 function decnRaw(unscaled: bigint, magBytes: number, negative = false): Buffer {
   const sign = Buffer.from([negative ? 0x01 : 0x00]);
   const mag  = Buffer.alloc(magBytes);
   let v = unscaled < 0n ? -unscaled : unscaled;
-  for (let i = 0; i < magBytes && v > 0n; i++) {
+  for (let i = magBytes - 1; i >= 0 && v > 0n; i--) {
     mag[i] = Number(v & 0xFFn);
     v >>= 8n;
   }
   return Buffer.concat([sign, mag]);
 }
 
-/** MONEY-Rohdaten: high INT32 LE + low UINT32 LE */
+/** MONEY-Rohdaten: high INT32 BE + low UINT32 BE */
 function moneyRaw(cents: bigint): Buffer {
   const b = Buffer.alloc(8);
   const hi = Number(cents >> 32n) | 0;
   const lo = Number(cents & 0xFFFF_FFFFn) >>> 0;
-  b.writeInt32LE(hi, 0);
-  b.writeUInt32LE(lo, 4);
+  b.writeInt32BE(hi, 0);
+  b.writeUInt32BE(lo, 4);
   return b;
 }
 
-/** SHORTMONEY-Rohdaten: INT32 LE (Wert * 10000) */
+/** SHORTMONEY-Rohdaten: INT32 BE (Wert * 10000) */
 function shortMoneyRaw(cents: number): Buffer {
   const b = Buffer.alloc(4);
-  b.writeInt32LE(cents, 0);
+  b.writeInt32BE(cents, 0);
   return b;
 }
 
 const BASE_DATE = Date.UTC(1900, 0, 1); // 1. Jan 1900 Mitternacht UTC
 
-/** DATE-Rohdaten: Tage seit 1900-01-01 als UINT32 LE */
+/** DATE-Rohdaten: Tage seit 1900-01-01 als UINT32 BE */
 function dateRaw(d: Date): Buffer {
   const days = Math.floor((d.getTime() - BASE_DATE) / 86_400_000);
   const b = Buffer.alloc(4);
-  b.writeUInt32LE(days, 0);
+  b.writeUInt32BE(days, 0);
   return b;
 }
 
-/** TIME-Rohdaten: 1/300s seit Mitternacht als UINT32 LE */
+/** TIME-Rohdaten: 1/300s seit Mitternacht als UINT32 BE */
 function timeRaw(h: number, m: number, s: number): Buffer {
   const ticks = (h * 3600 + m * 60 + s) * 300;
   const b = Buffer.alloc(4);
-  b.writeUInt32LE(ticks, 0);
+  b.writeUInt32BE(ticks, 0);
   return b;
 }
 
-/** DATETIME-Rohdaten: days(4 LE) + ticks(4 LE) */
+/** DATETIME-Rohdaten: days(4 BE) + ticks(4 BE) */
 function datetimeRaw(d: Date): Buffer {
   const days  = Math.floor((d.getTime() - BASE_DATE) / 86_400_000);
   const ms    = d.getTime() - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
   const ticks = Math.round(ms / 1000 * 300);
   const b = Buffer.alloc(8);
-  b.writeInt32LE(days, 0);
-  b.writeUInt32LE(ticks, 4);
+  b.writeInt32BE(days, 0);
+  b.writeUInt32BE(ticks, 4);
   return b;
 }
 
-/** SHORTDATE-Rohdaten: days(2 LE uint) + minutes(2 LE uint) */
+/** SHORTDATE-Rohdaten: days(2 BE uint) + minutes(2 BE uint) */
 function shortDateRaw(d: Date): Buffer {
   const days    = Math.floor((d.getTime() - BASE_DATE) / 86_400_000);
   const minutes = d.getUTCHours() * 60 + d.getUTCMinutes();
   const b = Buffer.alloc(4);
-  b.writeUInt16LE(days, 0);
-  b.writeUInt16LE(minutes, 2);
+  b.writeUInt16BE(days, 0);
+  b.writeUInt16BE(minutes, 2);
   return b;
 }
 
 // ===========================================================================
 
 describe('TypeMapper', () => {
-  const m = new TypeMapper();         // byteswap = false (LE, Standard)
-  const mBe = new TypeMapper(true);   // byteswap = true (BE)
+  // byteswap=false ist der TDS-5.0-Standard (Big-Endian, siehe PROGRESS.md
+  // "Designentscheidungen" und real gegen ASE 15.7 verifiziert in
+  // tests/integration/datatypes.test.ts). byteswap=true bedeutet "auf
+  // Little-Endian umschwenken" für LE-Server. Die Variablennamen unten (m/mBe)
+  // orientieren sich an den vorhandenen Testbezeichnungen "(LE)"/"(BE)" weiter
+  // unten in dieser Datei, nicht an der TypeMapper-Default-Bedeutung.
+  const m = new TypeMapper(true);     // byteswap = true → LE
+  const mBe = new TypeMapper();       // byteswap = false → BE (Standard)
 
   // -------------------------------------------------------------------------
   // NULL-Behandlung

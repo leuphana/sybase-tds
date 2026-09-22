@@ -2,6 +2,7 @@ import { config } from "dotenv";
 import { Connection } from "../src/connection";
 import { DataFormat } from "../src/types/data-format";
 import { DataType } from "../src/constants/tds-const";
+import { ConnectionPool } from "../src/connection-pool";
 
 config();
 
@@ -13,17 +14,17 @@ const PORT = parseInt(process.env['SYBASE_TEST_PORT'] ?? '5000', 10);
 const DEBUG = process.env['TDS_DEBUG'] === '1';
 
 async function main() {
-  const conn = new Connection({
+  const opts = {
     host:     HOST!,
     port:     PORT,
     username: USER,
     password: PASS
-  });
-  await conn.connect();
-  const stm = await conn.query('SELECT "Borrower"."address_id_nr" AS "Borrower_address_id_nr", "Borrower"."borrower_bar" AS "Borrower_borrower_bar", "Borrower"."iln" AS "Borrower_iln" FROM "borrower" "Borrower"');
-  console.log('Ergebnis:', stm);
+  };
 
-  await conn.end();
+  const pool = new ConnectionPool(opts, { max: 2 });
+  const conn = await pool.acquire();
+  const r = await conn.query('SELECT 1');
+  console.log(r);
 }
 
 main();

@@ -9,6 +9,7 @@ import { Connection } from '../../src/connection';
 import { SybaseError } from '../../src/error';
 import { DataFormat } from '../../src/types/data-format';
 import { DataType } from '../../src/constants/tds-const';
+import { ConnectionPool } from '../../src/connection-pool';
 
 const HOST = process.env['SYBASE_TEST_HOST'];
 const USER = process.env['SYBASE_TEST_USER'] ?? 'sa';
@@ -51,8 +52,7 @@ describeIf('Integration – Connection (benötigt SYBASE_TEST_HOST)', () => {
   it('PreparedStatement: prepare + execute + close', async () => {
     // CONVERT makes the ? type explicit so Sybase ASE can resolve it at prepare time.
     const stmt = await conn.prepare(
-      'SELECT name FROM sysobjects WHERE id = CONVERT(INT, ?)',
-      [new DataFormat(DataType.INT4)],
+      'SELECT name FROM sysobjects WHERE id = CONVERT(INT, ?)'
     );
     const result = await stmt.execute([1]);
     expect(result).toBeDefined();
@@ -69,8 +69,7 @@ describeIf('Integration – Connection (benötigt SYBASE_TEST_HOST)', () => {
   });
 
   it('ConnectionPool: acquire + release', async () => {
-    const { ConnectionPool } = await import('../../src/connection-pool');
-    const pool = ConnectionPool.create({
+    const pool = new ConnectionPool({
       host:     HOST!,
       port:     PORT,
       username: USER,

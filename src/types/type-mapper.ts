@@ -350,8 +350,11 @@ export class TypeMapper {
     // precision 1-9 → 4 magnitude bytes, 10-18 → 8, 19-27 → 12, 28-38 → 16
     const magBytes = Math.ceil(df.precision / 9) * 4;
     const mag = Buffer.alloc(magBytes);
+    // Big-Endian (mag[0] = höchstwertiges Byte) — muss zu _decodeDecn passen,
+    // das raw[1] als höchstwertiges Byte interpretiert (gegen echten Server
+    // verifiziert, siehe datatypes.test.ts "DECIMAL(10,2): Wert 99.99").
     let v = unscaled;
-    for (let i = 0; i < magBytes && v > 0n; i++) {
+    for (let i = magBytes - 1; i >= 0 && v > 0n; i--) {
       mag[i] = Number(v & 0xFFn);
       v >>= 8n;
     }
