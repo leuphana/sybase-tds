@@ -51,17 +51,27 @@ Reproduzierbar mit `npm test` bzw. `npx jest <pfad>`.
      Little-Endian-Sybase-Server getestet** — falls das später relevant wird
      (anderer Servertyp), muss geprüft werden, ob diese Typen auf der Leitung
      wirklich immer BE sind oder ob hier ein `byteswap`-Check fehlt.
-2. **[Hoch] `connect()` sendet seit der "ANSI quoted identifiers"-Änderung
-   (`src/connection.ts:122-125`) unconditional ein zusätzliches `OPTIONCMD`
-   nach dem Login und wartet auf `_collectResult()`.** Die Mock-basierten
-   Unit-Tests (`tests/unit/connection.test.ts`, `cursor.test.ts`,
-   `transaction.test.ts`, `prepared-statement.test.ts`) queuen dafür keine
-   zweite Antwort im `MockSocket` → jeder Test, der `.connect()` aufruft, hängt
-   5s und läuft in ein Jest-Timeout (komplette Suiten rot, obwohl die eigentliche
-   Logik wahrscheinlich funktioniert — gegen den echten Server lief `connect()`
-   ja erfolgreich). Fix: `MockSocket`-Testhelfer um die zweite Antwort ergänzen
-   (oder das Options-Roundtrip testbar/abschaltbar machen). Test-Hygiene-Bug,
-   aber er verdeckt aktuell jede andere Aussage der Mock-Unit-Tests.
+2. ~~**[Hoch] `connect()` sendet seit der "ANSI quoted identifiers"-Änderung
+   unconditional ein zusätzliches `OPTIONCMD` nach dem Login**~~ **BEHOBEN
+   (2026-09-22).** War wie vermutet ein reiner Test-Hygiene-Bug, kein
+   Treiberbug: `MockSocket`-Testhelfer in `connection.test.ts`, `cursor.test.ts`,
+   `transaction.test.ts`, `prepared-statement.test.ts` um eine zweite geqeute
+   Antwort (`doneOnlyBuf()`) für die ANSI-QUOTED_IDENT-Roundtrip ergänzt.
+   Beim Aufdecken der eigentlichen Testergebnisse (vorher durch den Timeout
+   verdeckt) kamen zwei weitere, unabhängige Testbugs zum Vorschein und
+   wurden mitgefixt:
+   - `queryResponseBuf()`-Testhelfer (`tests/unit/mock-socket.ts`) schrieb den
+     INT4-Zeilenwert Little-Endian, unabhängig vom `byteswap`-Flag der
+     jeweiligen Test-Connection — Helfer bekam einen `byteswap`-Parameter
+     (Default `false`/BE, wie der Produktivcode).
+   - `prepared-statement.test.ts` erwartete, dass PREPARE nie ein PARAMFMT-Token
+     enthält — laut `TDS_QUERY_PROTOKOLL.md` ("Phase 1: PREPARE … Sendet
+     DYNAMIC(PREPARE) + PARAMFMT") gehört PARAMFMT aber genau dorthin, wenn
+     beim Aufruf Parameter-Formate mitgegeben werden. Test in zwei Fälle
+     aufgeteilt (mit/ohne mitgegebene Typen).
+   - **Ergebnis**: `npm test` jetzt 650/668 grün (vorher 612/667), keine neuen
+     Regressionen. Die verbleibenden 18 Fehlschläge sind exakt die Punkte
+     #3–#6 unten.
 3. **[Mittel] `ConnectionPool.create(...)` existiert nicht** — `connection-pool.ts`
    hat nur einen öffentlichen Constructor (`new ConnectionPool(options, poolOptions)`),
    der Test (`tests/unit/connection-pool.test.ts`) erwartet aber eine statische

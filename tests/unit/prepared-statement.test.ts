@@ -17,6 +17,7 @@ import {
 async function makeConn(): Promise<{ conn: Connection; mock: MockSocket }> {
   const mock = new MockSocket();
   mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+  mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
   const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
   return { conn, mock };
 }
@@ -54,13 +55,24 @@ describe('PreparedStatement', () => {
       expect(pkt[8]).toBe(TokenType.DYNAMIC);
     });
 
-    it('PREPARE sendet kein PARAMFMT (Typen werden erst bei EXECUTE übermittelt)', async () => {
+    it('PREPARE mit übergebenen Parameter-Typen sendet PARAMFMT direkt nach DYNAMIC', async () => {
+      // Laut TDS_QUERY_PROTOKOLL.md ("Phase 1: PREPARE ... Sendet DYNAMIC(PREPARE) + PARAMFMT")
+      // gehört PARAMFMT zur PREPARE-Phase, sofern beim Aufruf Parameter-Formate
+      // mitgegeben werden — nicht erst zu EXECUTE.
       const { conn, mock } = await makeConn();
       mock.queueResponse(doneOnlyBuf());
       await conn.prepare('SELECT ?', [new DataFormat(DataType.INT4)]);
       const pkt  = mock.written[mock.written.length - 1];
       const body = pkt.slice(8);
-      // PREPARE darf kein PARAMFMT-Token enthalten
+      expect(body.includes(TokenType.PARAMFMT)).toBe(true);
+    });
+
+    it('PREPARE ohne übergebene Parameter-Typen sendet kein PARAMFMT', async () => {
+      const { conn, mock } = await makeConn();
+      mock.queueResponse(doneOnlyBuf());
+      await conn.prepare('SELECT ?');
+      const pkt  = mock.written[mock.written.length - 1];
+      const body = pkt.slice(8);
       expect(body.includes(TokenType.PARAMFMT)).toBe(false);
     });
   });

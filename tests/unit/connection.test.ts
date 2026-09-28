@@ -23,6 +23,7 @@ function makeConnectedSocket(mock: MockSocket): TdsSocket {
 async function makeConnection(mock: MockSocket): Promise<Connection> {
   // Queue login response
   mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+  mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
   return new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 }
 
@@ -38,6 +39,7 @@ describe('Connection', () => {
     it('gibt eine Connection zurück bei erfolgreichem Login', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
       expect(conn).toBeInstanceOf(Connection);
     });
@@ -45,6 +47,7 @@ describe('Connection', () => {
     it('schreibt Login + Capability in TDS-Pakete (Login-Body > maxBody → 2 Pakete)', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
       // Login-Body (568 B) + CapabilityToken (~31 B) > 504 B maxBody → 2 Pakete
       expect(mock.written.length).toBeGreaterThanOrEqual(2);
@@ -90,9 +93,10 @@ describe('Connection', () => {
     it('gibt QueryResult mit rows zurück', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       const conn = await new Connection({ host: 'localhost', username: 'sa', byteswap: true }, mock).connect();
 
-      mock.queueResponse(queryResponseBuf(42, 'alice'));
+      mock.queueResponse(queryResponseBuf(42, 'alice', 1, true)); // byteswap=true → LE, passend zur obigen Connection
       const result = await conn.query('SELECT id, name FROM users');
 
       expect(result.rows).toHaveLength(1);
@@ -103,6 +107,7 @@ describe('Connection', () => {
     it('gibt rowCount aus DONE-Token zurück', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(queryResponseBuf(1, 'x', 3));
@@ -113,6 +118,7 @@ describe('Connection', () => {
     it('gibt leeres rows-Array bei INSERT/UPDATE zurück', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(doneOnlyBuf(5));
@@ -124,6 +130,7 @@ describe('Connection', () => {
     it('wirft SybaseError bei EED-Antwort', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(Buffer.concat([eedBuf(208, 'Object not found'), doneBuf()]));
@@ -133,6 +140,7 @@ describe('Connection', () => {
     it('SybaseError.message enthält Fehlertext', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       mock.queueResponse(Buffer.concat([eedBuf(208, 'Object not found'), doneBuf()]));
@@ -147,9 +155,10 @@ describe('Connection', () => {
   // -------------------------------------------------------------------------
 
   describe('end() – Verbindungsende', () => {
-    it('sendet LOGOUT-Paket (zweites geschriebenes Paket)', async () => {
+    it('sendet LOGOUT-Paket (letztes geschriebenes Paket)', async () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
       await conn.end();
@@ -170,6 +179,7 @@ describe('Connection', () => {
     beforeEach(async () => {
       mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
+      mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
       conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
     });
 

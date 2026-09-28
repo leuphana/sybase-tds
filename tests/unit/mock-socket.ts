@@ -118,8 +118,12 @@ export function eedBuf(errorNumber = 208, message = 'Fehler', severity = 16): Bu
   return w.toBuffer();
 }
 
-/** ROWFMT + ROW (INT4=intVal, VARCHAR=strVal) + DONE */
-export function queryResponseBuf(intVal: number, strVal: string, rowCount = 1): Buffer {
+/**
+ * ROWFMT + ROW (INT4=intVal, VARCHAR=strVal) + DONE.
+ * `byteswap` muss zum `byteswap`-Flag der Connection passen, gegen die diese
+ * Antwort abgespielt wird (false = Big-Endian/Standard, true = Little-Endian).
+ */
+export function queryResponseBuf(intVal: number, strVal: string, rowCount = 1, byteswap = false): Buffer {
   const str = Buffer.from(strVal, 'utf8');
 
   // ROWFMT: 2 columns – INT4 (fixed) + VARCHAR (variable)
@@ -140,7 +144,7 @@ export function queryResponseBuf(intVal: number, strVal: string, rowCount = 1): 
 
   // ROW token
   const intBuf = Buffer.alloc(4);
-  intBuf.writeInt32LE(intVal, 0);
+  byteswap ? intBuf.writeInt32LE(intVal, 0) : intBuf.writeInt32BE(intVal, 0);
   const row = Buffer.concat([
     Buffer.from([TokenType.ROW]),
     intBuf,
