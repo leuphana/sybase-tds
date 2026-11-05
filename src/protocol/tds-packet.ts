@@ -8,7 +8,7 @@ import { PduType } from '../constants/tds-const';
  *   Byte 1:   Status flags  (0x01 = EOM, last packet)
  *   Byte 2-3: Packet length  (big-endian, including 8-byte header)
  *   Byte 4-5: Channel        (always 0x0000)
- *   Byte 6:   Packet number  (sequence starting at 1)
+ *   Byte 6:   Packet number  (sequence starting at 0 – verified against ASE 15.7)
  *   Byte 7:   Window         (always 0x00)
  *   Byte 8+:  Body
  */

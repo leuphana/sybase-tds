@@ -10,9 +10,12 @@ const LARGE_TYPES = new Set<DataType>([
 
 export class RowParser {
   readonly values: Array<Buffer | null>;
+  /** Total size of the token in bytes (including the token byte). */
+  readonly byteLength: number;
 
-  private constructor(values: Array<Buffer | null>) {
-    this.values = values;
+  private constructor(values: Array<Buffer | null>, byteLength: number) {
+    this.values     = values;
+    this.byteLength = byteLength;
   }
 
   /**
@@ -23,6 +26,8 @@ export class RowParser {
    *   - Fixed types with COLUMNSTATUS:    1 byte status; 0 = null, otherwise value bytes
    *   - Variable types (large):           4-byte length, then bytes (0 = null)
    *   - Variable types (normal):          1-byte length, then bytes (0 = null)
+   *
+   * Also used for PARAMS (0xD7) from the server — same layout, columns from PARAMFMT.
    */
   static read(buf: Buffer, columns: DataFormat[]): RowParser {
     const r = new TdsReader(buf);
@@ -50,6 +55,6 @@ export class RowParser {
       }
     }
 
-    return new RowParser(values);
+    return new RowParser(values, r.offset);
   }
 }

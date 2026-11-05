@@ -12,9 +12,10 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test": "jest tests/unit",
+    "test:integration": "jest --runInBand tests/integration",
+    "test:watch": "jest --watch tests/unit",
+    "test:coverage": "jest --coverage tests/unit",
     "lint": "tsc --noEmit"
   },
   "keywords": [

@@ -94,9 +94,9 @@ describe('Connection', () => {
       const mock = new MockSocket();
       mock.queueResponse(Buffer.concat([loginAckBuf(), doneBuf()]));
       mock.queueResponse(doneOnlyBuf()); // ANSI quoted-identifier OPTIONCMD-Antwort (siehe Connection.connect())
-      const conn = await new Connection({ host: 'localhost', username: 'sa', byteswap: true }, mock).connect();
+      const conn = await new Connection({ host: 'localhost', username: 'sa' }, mock).connect();
 
-      mock.queueResponse(queryResponseBuf(42, 'alice', 1, true)); // byteswap=true → LE, passend zur obigen Connection
+      mock.queueResponse(queryResponseBuf(42, 'alice', 1));
       const result = await conn.query('SELECT id, name FROM users');
 
       expect(result.rows).toHaveLength(1);

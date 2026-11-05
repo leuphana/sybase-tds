@@ -50,9 +50,9 @@ describeIf('Integration – Connection (benötigt SYBASE_TEST_HOST)', () => {
   });
 
   it('PreparedStatement: prepare + execute + close', async () => {
-    // CONVERT makes the ? type explicit so Sybase ASE can resolve it at prepare time.
+    // Untyped ? is allowed in WHERE; ASE derives the type from the column.
     const stmt = await conn.prepare(
-      'SELECT name FROM sysobjects WHERE id = CONVERT(INT, ?)'
+      'SELECT name FROM sysobjects WHERE id = ?'
     );
     const result = await stmt.execute([1]);
     expect(result).toBeDefined();

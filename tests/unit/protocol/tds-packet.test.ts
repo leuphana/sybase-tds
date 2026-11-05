@@ -18,9 +18,12 @@ describe('TdsPacket', () => {
       expect(pkt.isLast).toBe(true);
     });
 
-    it('Standard-Parameter: packetNumber=1, isLast=true', () => {
+    // Hinweis: TDS_LOGIN_PAKET.md nennt "beginnend bei 1"; der Treiber sendet
+    // seit Commit 576acf5 bewusst 0 — so gegen ASE 15.7 verifiziert (der Server
+    // wertet das Feld nicht aus).
+    it('Standard-Parameter: packetNumber=0, isLast=true', () => {
       const pkt = new TdsPacket(PduType.BUF_LANG, Buffer.alloc(0));
-      expect(pkt.packetNumber).toBe(1);
+      expect(pkt.packetNumber).toBe(0);
       expect(pkt.isLast).toBe(true);
     });
   });

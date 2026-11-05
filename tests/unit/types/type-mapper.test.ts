@@ -500,11 +500,11 @@ describe('TypeMapper', () => {
       expect(result.readDoubleLE(1)).toBeCloseTo(3.14, 10);
     });
 
-    it('MONEYN maxLength=4: 2.5 → [4][int LE 25000]', () => {
+    it('MONEYN maxLength=4: 2.5 → [4][int BE 25000]', () => {
       const df = new DataFormat(DataType.MONEYN, { maxLength: 4 });
       const result = m.encodeParam(df, 2.5);
       expect(result[0]).toBe(4);
-      expect(result.readInt32LE(1)).toBe(25000);
+      expect(result.readInt32BE(1)).toBe(25000);
     });
 
     it('DECN(5,2): "123.45" → korrekte Bytes', () => {

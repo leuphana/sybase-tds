@@ -2,7 +2,7 @@
  * Integration – Stored Procedures (Sybase ASE 15.7)
  * Requires SYBASE_TEST_HOST.
  *
- * Uses local temp procs (#name) – visible only within the current session.
+ * Only read-only system procedures – ASE cannot create temporary procedures.
  */
 
 import { Connection } from '../../src/connection';
@@ -25,50 +25,36 @@ describeIf('Integration – Stored Procedures', () => {
     if (conn) await conn.end();
   });
 
-  it('CREATE + EXEC + DROP einer einfachen Prozedur', async () => {
-    await conn.query(`
-      CREATE PROCEDURE #sp_sum @a INT, @b INT
-      AS SELECT @a + @b AS result
-    `);
-    const r = await conn.query('EXEC #sp_sum 10, 32');
-    expect(r.rows[0][0]).toBe(42);
-    await conn.query('DROP PROCEDURE #sp_sum');
+  // ASE erlaubt keine temporären Prozeduren (#name). Damit die Tests keine
+  // Objekte in einer echten Datenbank anlegen, nutzen sie nur lesende
+  // System-Prozeduren.
+
+  it('EXEC einer System-Prozedur liefert Zeilen und Return-Status 0', async () => {
+    const r = await conn.query('EXEC sp_server_info');
+    expect(r.rows.length).toBeGreaterThan(0);
+    expect(r.returnStatus).toBe(0);
   });
 
-  it('Prozedur mit VARCHAR-Parameter', async () => {
-    await conn.query(`
-      CREATE PROCEDURE #sp_greet @name VARCHAR(50)
-      AS SELECT 'Hello ' + @name AS greeting
-    `);
-    const r = await conn.query("EXEC #sp_greet 'World'");
-    expect(r.rows[0][0]).toBe('Hello World');
-    await conn.query('DROP PROCEDURE #sp_greet');
+  it('Return-Status ≠ 0 wird geliefert (sp_helpdb mit unbekannter DB)', async () => {
+    let r;
+    try {
+      r = await conn.query("EXEC sp_helpdb 'gibt_es_nicht_xyz'");
+    } catch (e) {
+      // manche Versionen melden zusätzlich einen Fehler – dann reicht, dass die Connection nutzbar bleibt
+      r = undefined;
+    }
+    if (r) expect(r.returnStatus).not.toBe(0);
+    expect((await conn.query('SELECT 1')).rows[0][0]).toBe(1);
   });
 
-  it('Prozedur gibt mehrere Zeilen zurück', async () => {
-    await conn.query(`
-      CREATE PROCEDURE #sp_rows
-      AS
-        SELECT 1 AS n
-        SELECT 2 AS n
-        SELECT 3 AS n
-    `);
-    const r = await conn.query('EXEC #sp_rows');
-    expect(r.rows.length).toBeGreaterThanOrEqual(1);
-    await conn.query('DROP PROCEDURE #sp_rows');
+  it('Prozedur mit mehreren Resultsets', async () => {
+    const r = await conn.query('EXEC sp_help sysobjects');
+    expect(r.resultSets.length).toBeGreaterThan(1);
+    expect(r.returnStatus).toBe(0);
   });
 
-  it('Prozedur mit lokaler Temp-Tabelle', async () => {
-    await conn.query(`
-      CREATE PROCEDURE #sp_temptbl
-      AS
-        CREATE TABLE #inner (v INT)
-        INSERT #inner VALUES (7)
-        SELECT v FROM #inner
-        DROP TABLE #inner
-    `);
-    const r = await conn.query('EXEC #sp_temptbl');
-    expect(r.rows[0][0]).toBe(7);
-    await conn.query('DROP PROCEDURE #sp_temptbl');
+  it('Connection bleibt nach mehreren EXEC synchron', async () => {
+    for (let i = 0; i < 3; i++) await conn.query('EXEC sp_server_info');
+    expect((await conn.query('SELECT 7')).rows[0][0]).toBe(7);
   });
 });

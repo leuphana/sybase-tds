@@ -26,6 +26,24 @@ describeIf('Integration – Prepared Statements', () => {
     if (conn) await conn.end();
   });
 
+  // ASE erlaubt untypisierte `?` nur in WHERE, SET und VALUES – daher laufen die
+  // Parameter-Tests über eine sitzungslokale Temp-Tabelle.
+  beforeAll(async () => {
+    await conn.query(`
+      CREATE TABLE #ps (
+        i  INT          NULL,
+        v  VARCHAR(50)  NULL,
+        f  FLOAT        NULL,
+        b  BIT          DEFAULT 0 NOT NULL,
+        d  DATETIME     NULL
+      )
+    `);
+  });
+
+  beforeEach(async () => {
+    await conn.query('DELETE FROM #ps');
+  });
+
   // ── Explizite DataFormat-Angabe ─────────────────────────────────────────────
 
   it('prepare + execute ohne Parameter', async () => {
@@ -36,53 +54,46 @@ describeIf('Integration – Prepared Statements', () => {
   });
 
   it('prepare + execute mit INT4-Parameter (?)', async () => {
-    const stmt = await conn.prepare(
-      'SELECT CONVERT(INT, ?) + 1',
-      [new DataFormat(DataType.INT4)],
-    );
-    const r = await stmt.execute([10]);
-    expect(r.rows[0][0]).toBe(11);
+    const stmt = await conn.prepare('INSERT INTO #ps (i) VALUES (?)', [new DataFormat(DataType.INT4)]);
+    await stmt.execute([10]);
     await stmt.close();
+    expect((await conn.query('SELECT i + 1 FROM #ps')).rows[0][0]).toBe(11);
   });
 
   it('prepare + execute mit VARCHAR-Parameter (?)', async () => {
     const stmt = await conn.prepare(
-      'SELECT CONVERT(VARCHAR(50), ?)',
+      'INSERT INTO #ps (v) VALUES (?)',
       [new DataFormat(DataType.VARCHAR, { maxLength: 50 })],
     );
-    const r = await stmt.execute(['hello']);
-    expect(r.rows[0][0]).toBe('hello');
+    await stmt.execute(['hello']);
     await stmt.close();
+    expect((await conn.query('SELECT v FROM #ps')).rows[0][0]).toBe('hello');
   });
 
   it('prepare + execute mit FLT8-Parameter (?)', async () => {
-    const stmt = await conn.prepare(
-      'SELECT CONVERT(FLOAT, ?)',
-      [new DataFormat(DataType.FLT8)],
-    );
-    const r = await stmt.execute([3.14]);
-    expect(typeof r.rows[0][0]).toBe('number');
-    expect(Math.abs((r.rows[0][0] as number) - 3.14)).toBeLessThan(0.001);
+    const stmt = await conn.prepare('INSERT INTO #ps (f) VALUES (?)', [new DataFormat(DataType.FLT8)]);
+    await stmt.execute([3.14]);
     await stmt.close();
+    const v = (await conn.query('SELECT f FROM #ps')).rows[0][0] as number;
+    expect(Math.abs(v - 3.14)).toBeLessThan(0.001);
   });
 
-  it('prepare + execute mit zwei INT-Parametern (?, ?)', async () => {
+  it('prepare + execute mit zwei INT-Parametern (?, ?) im WHERE', async () => {
+    await conn.query('INSERT INTO #ps (i) VALUES (3) INSERT INTO #ps (i) VALUES (7) INSERT INTO #ps (i) VALUES (9)');
     const stmt = await conn.prepare(
-      'SELECT CONVERT(INT, ?) + CONVERT(INT, ?)',
+      'SELECT i FROM #ps WHERE i >= ? AND i <= ? ORDER BY i',
       [new DataFormat(DataType.INT4), new DataFormat(DataType.INT4)],
     );
     const r = await stmt.execute([3, 7]);
-    expect(r.rows[0][0]).toBe(10);
+    expect(r.rows).toEqual([[3], [7]]);
     await stmt.close();
   });
 
   it('Statement mehrfach mit unterschiedlichen Werten ausführen', async () => {
-    const stmt = await conn.prepare(
-      'SELECT CONVERT(INT, ?) * CONVERT(INT, ?)',
-      [new DataFormat(DataType.INT4), new DataFormat(DataType.INT4)],
-    );
-    const r1 = await stmt.execute([3, 3]);
-    const r2 = await stmt.execute([7, 7]);
+    await conn.query('INSERT INTO #ps (i) VALUES (9) INSERT INTO #ps (i) VALUES (49)');
+    const stmt = await conn.prepare('SELECT i FROM #ps WHERE i = ?', [new DataFormat(DataType.INT4)]);
+    const r1 = await stmt.execute([9]);
+    const r2 = await stmt.execute([49]);
     expect(r1.rows[0][0]).toBe(9);
     expect(r2.rows[0][0]).toBe(49);
     await stmt.close();
@@ -91,48 +102,38 @@ describeIf('Integration – Prepared Statements', () => {
   // ── Automatische Typ-Erkennung (kein DataFormat angegeben) ─────────────────
 
   it('auto-inference: string → VARCHAR', async () => {
-    const stmt = await conn.prepare('SELECT CONVERT(VARCHAR(50), ?)');
-    const r = await stmt.execute(['world']);
-    expect(r.rows[0][0]).toBe('world');
-    await stmt.close();
+    await conn.query('INSERT INTO #ps (v) VALUES (?)', ['world']);
+    expect((await conn.query('SELECT v FROM #ps WHERE v = ?', ['world'])).rows[0][0]).toBe('world');
   });
 
   it('auto-inference: ganzzahlige number → INT4', async () => {
-    const stmt = await conn.prepare('SELECT CONVERT(INT, ?) + 0');
-    const r = await stmt.execute([99]);
-    expect(r.rows[0][0]).toBe(99);
-    await stmt.close();
+    await conn.query('INSERT INTO #ps (i) VALUES (?)', [99]);
+    expect((await conn.query('SELECT i FROM #ps')).rows[0][0]).toBe(99);
   });
 
   it('auto-inference: Dezimalzahl → FLT8', async () => {
-    const stmt = await conn.prepare('SELECT CONVERT(FLOAT, ?)');
-    const r = await stmt.execute([2.718]);
-    expect(typeof r.rows[0][0]).toBe('number');
-    expect(Math.abs((r.rows[0][0] as number) - 2.718)).toBeLessThan(0.001);
-    await stmt.close();
+    await conn.query('INSERT INTO #ps (f) VALUES (?)', [2.718]);
+    const v = (await conn.query('SELECT f FROM #ps')).rows[0][0] as number;
+    expect(Math.abs(v - 2.718)).toBeLessThan(0.001);
   });
 
   it('auto-inference: boolean → BIT', async () => {
-    const stmt = await conn.prepare('SELECT CONVERT(BIT, ?)');
-    const r = await stmt.execute([true]);
-    expect(r.rows[0][0]).toBe(true);
-    await stmt.close();
+    await conn.query('INSERT INTO #ps (b) VALUES (?)', [true]);
+    expect((await conn.query('SELECT b FROM #ps')).rows[0][0]).toBe(true);
   });
 
   it('auto-inference: Date → DATETIMN', async () => {
-    const stmt = await conn.prepare('SELECT CONVERT(DATETIME, ?)');
-    const r = await stmt.execute([new Date('2024-06-15T00:00:00Z')]);
+    const d = new Date('2024-06-15T13:45:30.500Z');
+    await conn.query('INSERT INTO #ps (d) VALUES (?)', [d]);
+    const r = await conn.query('SELECT d FROM #ps');
     expect(r.rows[0][0]).toBeInstanceOf(Date);
-    await stmt.close();
+    expect((r.rows[0][0] as Date).getTime()).toBe(d.getTime());
   });
 
   it('auto-inference: gemischte Typen (string + number)', async () => {
-    const stmt = await conn.prepare(
-      "SELECT CONVERT(VARCHAR(10), ?) + ' = ' + CONVERT(VARCHAR(10), CONVERT(INT, ?))",
-    );
-    const r = await stmt.execute(['Wert', 42]);
+    await conn.query('INSERT INTO #ps (v, i) VALUES (?, ?)', ['Wert', 42]);
+    const r = await conn.query("SELECT v + ' = ' + CONVERT(VARCHAR(10), i) FROM #ps");
     expect(r.rows[0][0]).toBe('Wert = 42');
-    await stmt.close();
   });
 
   // ── Fehlerverhalten ─────────────────────────────────────────────────────────

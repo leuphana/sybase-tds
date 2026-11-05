@@ -8,8 +8,8 @@ Ziel: aus dem aktuellen Proof-of-Concept einen produktionsreifen Treiber machen.
 ## Sofort — Status klären
 
 - [x] **Integrationstests gegen echten Host laufen lassen.** Am 2026-09-22 gegen
-      `t-lbslue.gbv.de:2025` (User `lbs`) ausgeführt — das ist derselbe Host wie
-      bibdocks produktive `lhlue`-Verbindung, keine separate Testinstanz. Vorab
+      `t-lbslue.gbv.de:2025` (User `lbs`) ausgeführt — laut Klarstellung vom
+      2026-11-05 ein **Testserver** (nicht produktiv). Vorab
       geprüft: alle Schreibzugriffe in den Integrationstests laufen ausschließlich
       auf `#`-präfixierten Temp-Objekten (Tempdb, sitzungsgebunden) — reale
       GBV-Tabellen/Daten werden nicht berührt. **Ergebnis: 11 von 34 Suiten
@@ -72,7 +72,8 @@ Reproduzierbar mit `npm test` bzw. `npx jest <pfad>`.
    - **Ergebnis**: `npm test` jetzt 650/668 grün (vorher 612/667), keine neuen
      Regressionen. Die verbleibenden 18 Fehlschläge sind exakt die Punkte
      #3–#6 unten.
-3. **[Mittel] `ConnectionPool.create(...)` existiert nicht** — `connection-pool.ts`
+3. ~~**[Mittel] `ConnectionPool.create(...)` existiert nicht**~~ **BEHOBEN (2026-11-05):**
+   Konstruktor ist die API (Commit 7c6e1cb), Unit-Test angepasst. — `connection-pool.ts`
    hat nur einen öffentlichen Constructor (`new ConnectionPool(options, poolOptions)`),
    der Test (`tests/unit/connection-pool.test.ts`) erwartet aber eine statische
    Factory `.create()`. Kompletter Suite-Compile-Fehler (TS2339), 0 der
@@ -99,12 +100,113 @@ Reproduzierbar mit `npm test` bzw. `npx jest <pfad>`.
    darf `?`-Parameter nur in diesen drei Kontexten erzeugen — ggf. Parameter in
    anderen Positionen (z.B. `SELECT`-Projektionen) clientseitig typisiert
    einsetzen (`CONVERT(...)`) statt als reinen Platzhalter.
-6. **[Niedrig] `packetNumber`-Default ist `0` statt `1`** (`tds-packet.test.ts`,
+6. ~~**[Niedrig] `packetNumber`-Default ist `0` statt `1`**~~ **GEKLÄRT (2026-11-05):**
+   0 wurde in Commit 576acf5 bewusst gegen den echten Server eingestellt und
+   funktioniert; Tests auf 0 angepasst (Doku sagt 1, ASE wertet das Feld nicht aus). (`tds-packet.test.ts`,
    `tds-socket.test.ts`, 2 Tests) — reiner Erwartungswert-Unterschied
    (Off-by-one), betrifft nur das allererste Paket einer Verbindung. Muss
    geklärt werden, ob TDS 5.0 wirklich mit Paketnummer 1 zu starten hat (Doku:
    `TDS_LOGIN_PAKET.md`) — falls ja, ist es ein echter (kleiner) Protokollbug,
    falls nein, sind die Tests veraltet.
+
+## Code-Review 2026-11-05 — Treiber-interne Befunde
+
+Ergebnis eines Durchgangs durch `src/` (zusätzlich zu den Punkten oben/unten,
+die v.a. den TypeORM-Fork betreffen). Nummern = Priorität.
+
+### Kritisch (falsche Daten / Abstürze)
+
+- [x] **K1 Variable Parameter > 255 Byte werden korrumpiert.** `TypeMapper._encodeVariable`
+      schreibt die Länge immer in 1 Byte (`Buffer.from([300])` → `44`). Lange
+      Strings/Binärdaten müssen als LONGCHAR/LONGBINARY mit 4-Byte-Länge gesendet
+      oder mit klarem Fehler abgelehnt werden.
+- [x] **K2 MONEYN/DATETIMN/DATEN/TIMEN werden Little-Endian encodiert**, aber
+      Big-Endian decodiert (gleiche Fehlerklasse wie der DECN-Fix). Betrifft jeden
+      `Date`-Parameter (`_inferFormat` → DATETIMN).
+- [x] **K3 RETURNSTATUS (0x79) wird als längenpräfixiertes Token geparst**, ist aber
+      Token + fester INT4. Jeder `exec` einer Prozedur führt zu "Unbekannter
+      TDS-Token-Typ". PROCID (0x7C) prüfen.
+- [x] **K4 Keine Serialisierung von Requests pro Connection.** Parallele `query()`-Aufrufe
+      senden mehrere Requests, bevor die erste Antwort gelesen ist (TDS-Verstoß,
+      geteilter Parser-State). Request-Queue/Mutex einführen.
+- [x] **K5 `byteswap: true` ist unbrauchbar** — Token-Längen, DONE, EED werden immer BE
+      gelesen. Option entfernen bzw. auf BE festlegen.
+
+### Hoch (Robustheit / Sicherheit)
+
+- [x] **H6 Keine Timeouts, kein Cancel.** `connect()` und `receive()` können ewig hängen;
+      kein ATTENTION, kein TCP-Keepalive.
+- [x] **H7 Pool ohne Health-Check.** Tote Connections werden wieder ausgegeben; offene
+      Transaktion wird bei `release()` nicht zurückgerollt; `min` unbenutzt;
+      `pool.end()` schließt aktive Connections nicht; kein `acquireTimeout`.
+- [ ] **H8 Passwort im Klartext, kein TLS.** *(teilweise: `tls`-Option eingebaut, ungetestet;
+      Passwortverschlüsselung offen – Protokoll steht nicht in der lokalen Doku)* `encryptedPassword` leert nur das Feld.
+      Zielhost ist extern (`t-lbslue.gbv.de`) → TLS-Option nötig; mit Betrieb/GBV
+      klären, ob der Listener SSL anbietet.
+- [x] **H9 Encoding faktisch fest UTF-8.** `Connection._encoding` wird nie gesetzt,
+      `TypeMapper` decodiert hart `utf8`; ENVCHANGE (Charset, Packetsize, DB) wird
+      ignoriert.
+- [x] **H10 Fehler-/Ergebnisbehandlung in `_collectResult`.** Bricht beim ersten EED ab,
+      ohne die Antwort zu Ende zu lesen; DONE-Error-Flag ignoriert; mehrere
+      Resultsets werden in ein `rows`-Array gemischt; Info-/PRINT-Meldungen gehen
+      verloren.
+
+### Mittel (fachliche Korrektheit / Performance)
+
+- [x] **M11 `_inferFormat`:** `bigint`/`Buffer` → VARCHAR, Integer > 2³¹ → RangeError.
+- [x] **M12 Datum/Geld:** TIME-Encode verliert ms; DATE-Decode unsigned (vor 1900 falsch);
+      MONEY über `Number` (Präzisionsverlust); UTC-Interpretation dokumentieren.
+- [x] **M13 Cursor:** `fetch(count)` ignoriert `count`, Parameter werden nicht gesendet,
+      kein End-of-Data.
+- [x] **M14 Performance:** O(n²) `Buffer.concat` beim Empfang; Default-Packetsize 512;
+      ausgehandelte Packetsize (ENVCHANGE) wird nicht übernommen.
+- [x] **M15 `query()` ohne Parameter-Binding** → SQL-Injection-Risiko bei String-Bau.
+      LANGUAGE-Token mit Argumenten prüfen.
+
+### Umsetzungsstand (2026-11-05)
+
+Alle Punkte oben sind mit Unit-Tests abgedeckt (`tests/unit/review/*.test.ts`,
+`tests/unit/connection-pool.test.ts`; 660/660 grün) und am 2026-11-05 gegen den
+GBV-Testserver (ASE 15.7 SP122) verifiziert: `npm run test:integration` **103/103 grün**,
+u.a. neue Suite `tests/integration/review-verification.test.ts`. Die vorher roten
+Prepared-Statement- und Prozedur-Tests (Punkte 4 und 5 oben) nutzen jetzt gültige
+ASE-Konstrukte (`?` nur in WHERE/VALUES, System-Prozeduren statt `#`-Prozeduren).
+
+Verifikationsliste:
+
+- [x] K2: Round-Trip `DATETIME`/`SMALLDATETIME`/`DATE`/`TIME`/`MONEY`-Parameter über
+      Prepared Statements (Byte-Reihenfolge war vorher LE, jetzt BE wie decode).
+- [x] K3: `RETURNSTATUS` = Token + INT4 (Layout steht nicht in der lokalen Doku);
+      `exec sp_...` mit Return-Status und Output-Parametern (PARAMFMT/PARAMS).
+      PROCID (0x7C) wird weiter als längenpräfixiert übersprungen – prüfen.
+      → Return-Status verifiziert (`sp_server_info`, `sp_help`). **Offen:** Output-Parameter
+      (PARAMFMT/PARAMS) – kommen nur bei RPC-Aufrufen, dafür gibt es noch keine High-Level-API.
+- [x] K1: LONGCHAR/LONGBINARY-Parameter > 255 Byte (wird ASE so akzeptiert?).
+- [x] M11: `bigint`/große Ganzzahlen als INTN(8)-Parameter.
+- [x] H6: `requestTimeout` mit `waitfor delay` → ATTENTION wird bestätigt (DONE_ATTN),
+      Connection danach weiter nutzbar.
+- [x] H7: `DONE_INXACT` wird von ASE wie erwartet gesetzt (Pool-Rollback hängt daran,
+      zusätzlich zum `Transaction`-Flag).
+- [x] H9: Welchen Charset meldet der Server per ENVCHANGE beim Login mit `utf8`?
+      Umlaute in VARCHAR-Spalten lesen/schreiben. Bei `iso_1`-Server: Driver
+      decodiert jetzt automatisch Latin-1.
+      → Server akzeptiert `utf8` (kein Charset-Wechsel), Umlaute in Literal und Parameter korrekt.
+      Damit ist der Prio-1-Punkt "Encoding/Charset" treiberseitig geklärt.
+- [x] M14: Angefragte Paketgröße 2048 – Server bestätigt per ENVCHANGE? → ja, 2048.
+- [ ] **Neu, offen:** TEXT/IMAGE-Spalten in ROW-Tokens. Der Parser liest sie wie
+      LONGCHAR (4-Byte-Länge). In TDS 5.0 haben TEXT/IMAGE-Zeilenwerte
+      üblicherweise zusätzlich einen Text-Pointer + Timestamp vor der Länge – die
+      lokale Doku beschreibt das nicht, daher nicht geändert. Integrationstest mit
+      einer `text`-Spalte nötig, bevor TEXT/IMAGE produktiv gelesen werden.
+
+### Hygiene
+
+- [x] Rote Unit-Suiten: `ConnectionPool.create`, `packetNumber`-Default (Punkte 3 und 6 oben).
+- [x] `ConnectOptions` um `database`, `appName`, `connectTimeout` ergänzen.
+- [x] `tests/test.ts` (Bastel-Skript) entfernt.
+- [ ] CI + ESLint; Fehlermeldungen einheitlich (Deutsch/Englisch gemischt).
+- [x] **Achtung:** `jest.config.js` lädt `.env` → `npm test` lief Integrationstests
+      automatisch gegen den GBV-Testhost. Für lokale Läufe `npx jest tests/unit` nutzen.
 
 ## Priorität 1 — Blocker für jeden Produktiveinsatz
 
@@ -123,7 +225,8 @@ Reproduzierbar mit `npm test` bzw. `npx jest <pfad>`.
       `bibdock/php/tests/Unit/Database/LhlueBuilderTest.php`): Zwei-Schritt-
       Cursor-Query, Sonderfall "SELECT-Alias nicht in HAVING referenzierbar",
       explizite `CONVERT(FLOAT, ...)`-Casts für Zahlenvergleiche.
-- [ ] **`database`-Option wird beim Connect nicht verwendet.** In
+- [ ] **`database`-Option wird beim Connect nicht verwendet.** *(Treiberseitig jetzt
+      `ConnectOptions.database` → `use <db>`; der TypeORM-Fork muss sie nur noch durchreichen.)* In
       `typeorm/src/driver/sybase/SybaseDriver.ts` wird `this.database` gesetzt,
       aber nie an `connectOptions` übergeben und es folgt kein `USE <database>`.
       Muss geprüft/gefixt werden — sonst landet man ggf. auf der falschen

@@ -16,6 +16,7 @@ Implementierung nach dem **Cleanroom-Prinzip** ausschließlich auf Basis der Mar
 | 4 | Typ-System | ✅ Abgeschlossen |
 | 5 | High-Level API | ✅ Abgeschlossen |
 | 6 | Projektdokumentation | ✅ Abgeschlossen |
+| 7 | Härtung für Produktivbetrieb (Code-Review 2026-11-05) | ✅ Abgeschlossen (offen: H8, TEXT/IMAGE) |
 
 ---
 
@@ -119,6 +120,21 @@ Abzudeckende TDS-Typen:
 - [x] `docs/API.md` – Vollständige Public-API-Referenz
 - [x] `docs/TYPEORM.md` – Hinweise zur TypeORM-Integration (separates Paket)
 - [x] `CHANGELOG.md` – Initiale Version 0.1.0
+
+---
+
+## Phase 7 – Härtung (Code-Review 2026-11-05) ✅
+
+Details und offene Server-Verifikation: `SYBASE_TODO.md`, Abschnitt "Code-Review 2026-11-05".
+
+- [x] K1–K5: lange Parameter, BE-Encoding Datum/Geld, RETURNSTATUS/PARAMS, Request-Queue, `byteswap` entfernt
+- [x] H6/H7/H9/H10: Timeouts + ATTENTION-Cancel, Pool-Health-Check/Rollback, Charset via ENVCHANGE, Fehler-/Resultset-Handling
+- [x] M11–M15: Typableitung, Datum/Geld-Präzision, Cursor `fetch(n)`, Puffer-Performance, `query(sql, params)`
+- [x] Integrationstests gegen ASE 15.7 (GBV-Testserver): 103/103 grün
+- [ ] TEXT/IMAGE-Spalten (Text-Pointer-Layout) verifizieren
+- [ ] H8: Passwortverschlüsselung; TLS-Option ungetestet
+
+**Testergebnis: 660/660 Unit-Tests, 103/103 Integrationstests grün** (`npm test` = nur Unit, `npm run test:integration` separat)
 
 ---
 

@@ -56,13 +56,14 @@
 
 **`DataFormat`** is shared between client (PARAMFMT) and server (ROWFMT). It holds type code, length, precision/scale, locale, etc., and can both serialize (`build()`) and deserialize (`DataFormat.read()`).
 
-**`TypeMapper`** converts between `Buffer | null` (raw wire bytes) and `JsValue` (JS primitives). It respects the `byteswap` flag for platforms with different byte order.
+**`TypeMapper`** converts between `Buffer | null` (raw wire bytes) and `JsValue` (JS primitives). Its `encoding` follows the server charset (ENVCHANGE). The `byteswap` flag only exists for unit tests – connections are always big-endian.
 
 ### Public API
 
 **`Connection`** orchestrates TdsSocket + login + token building + response parsing:
 - `connect()` — static factory; sends LOGIN + CAPABILITY, checks LOGINACK
-- `query()` — sends LANGUAGE token, collects results
+- `query()` — sends LANGUAGE token (or PREPARE/EXECUTE when parameters are passed), collects results
+- all requests run through a per-connection queue (`_request()`), so only one request is on the wire at a time; `requestTimeout` triggers ATTENTION-based cancellation
 - `_collectResult()` — loops on `receive()` until done with `!hasMore()`
 - `prepare()` / `cursor()` / `transaction()` — factory methods for sub-objects
 

@@ -33,6 +33,9 @@ beforeEach(() => {
     .mockImplementation(async function(this: Connection) {
       connections.push(this);
       Object.assign(this, mockConn());
+      // Zustand der Mock-Connection steuerbar machen (echte Getter überschreiben)
+      Object.defineProperty(this, 'isClosed',      { value: false, writable: true, configurable: true });
+      Object.defineProperty(this, 'inTransaction', { value: false, writable: true, configurable: true });
       return this;
     });
 });
@@ -51,7 +54,7 @@ describe('ConnectionPool', () => {
   // -------------------------------------------------------------------------
 
   it('create() gibt einen Pool zurück', () => {
-    const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' });
+    const pool = new ConnectionPool({ host: 'localhost', username: 'sa' });
     expect(pool).toBeInstanceOf(ConnectionPool);
   });
 
@@ -61,21 +64,21 @@ describe('ConnectionPool', () => {
 
   describe('acquire()', () => {
     it('erstellt eine neue Connection beim ersten acquire()', async () => {
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' });
       const conn = await pool.acquire();
       expect(conn).toBeDefined();
       expect(connectSpy).toHaveBeenCalledTimes(1);
     });
 
     it('zweites acquire() erstellt eine weitere Connection (beide aktiv)', async () => {
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' }, { max: 5 });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' }, { max: 5 });
       await pool.acquire();
       await pool.acquire();
       expect(connectSpy).toHaveBeenCalledTimes(2);
     });
 
     it('acquire() nach release() nutzt idle Connection wieder (kein neues connect)', async () => {
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' });
       const conn = await pool.acquire();
       pool.release(conn);
 
@@ -85,7 +88,7 @@ describe('ConnectionPool', () => {
     });
 
     it('acquire() bei max=1 wartet bis release()', async () => {
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' }, { max: 1 });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' }, { max: 1 });
       const conn1 = await pool.acquire();
 
       let resolved = false;
@@ -104,7 +107,7 @@ describe('ConnectionPool', () => {
     });
 
     it('acquire() nach end() wirft', async () => {
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' });
       await pool.end();
       await expect(pool.acquire()).rejects.toThrow();
     });
@@ -117,7 +120,7 @@ describe('ConnectionPool', () => {
   describe('release()', () => {
     it('release() fügt Connection zum Idle-Pool hinzu', async () => {
       jest.useFakeTimers(); // Idle-Timer soll nicht ablaufen
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' });
       const conn = await pool.acquire();
       pool.release(conn);
 
@@ -127,7 +130,7 @@ describe('ConnectionPool', () => {
     });
 
     it('release() an wartenden Waiter weiterleiten', async () => {
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' }, { max: 1 });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' }, { max: 1 });
       const conn = await pool.acquire();
 
       // Zweites acquire() wartet (max=1 voll)
@@ -146,7 +149,7 @@ describe('ConnectionPool', () => {
   describe('end()', () => {
     it('schließt alle idle Connections', async () => {
       jest.useFakeTimers();
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' });
       const conn = await pool.acquire();
       pool.release(conn);
 
@@ -156,9 +159,9 @@ describe('ConnectionPool', () => {
     });
 
     it('reject() wartende Acquirer mit Fehler', async () => {
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' }, { max: 0 });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' }, { max: 0 });
       // max=0 → kein Limit → direkt erstellen. Mache max=1 voll
-      const pool2 = ConnectionPool.create({ host: 'localhost', username: 'sa' }, { max: 1 });
+      const pool2 = new ConnectionPool({ host: 'localhost', username: 'sa' }, { max: 1 });
       const conn = await pool2.acquire();
 
       const p = pool2.acquire();
@@ -170,7 +173,7 @@ describe('ConnectionPool', () => {
     });
 
     it('end() zweimal ist sicher (kein doppelter Fehler)', async () => {
-      const pool = ConnectionPool.create({ host: 'localhost', username: 'sa' });
+      const pool = new ConnectionPool({ host: 'localhost', username: 'sa' });
       await pool.end();
       await expect(pool.end()).resolves.toBeUndefined();
     });
@@ -183,7 +186,7 @@ describe('ConnectionPool', () => {
   describe('Idle-Timeout', () => {
     it('idle Connection wird nach Timeout geschlossen', async () => {
       jest.useFakeTimers();
-      const pool = ConnectionPool.create(
+      const pool = new ConnectionPool(
         { host: 'localhost', username: 'sa' },
         { idleTimeout: 1000 },
       );
@@ -196,7 +199,7 @@ describe('ConnectionPool', () => {
 
     it('Timer wird abgebrochen wenn Connection re-acquired wird', async () => {
       jest.useFakeTimers();
-      const pool = ConnectionPool.create(
+      const pool = new ConnectionPool(
         { host: 'localhost', username: 'sa' },
         { idleTimeout: 1000 },
       );
@@ -210,6 +213,107 @@ describe('ConnectionPool', () => {
       // conn.end sollte NICHT aufgerufen worden sein (Timer abgebrochen)
       expect((conn.end as jest.Mock)).not.toHaveBeenCalled();
       expect(conn2).toBe(conn);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Robustheit (H7, Code-Review 2026-11-05)
+  // -------------------------------------------------------------------------
+
+  describe('Robustheit', () => {
+    const opts = { host: 'localhost', username: 'sa' };
+    const setState = (c: Connection, key: 'isClosed' | 'inTransaction', v: boolean) =>
+      Object.defineProperty(c, key, { value: v, writable: true, configurable: true });
+
+    it('parallele acquire() überschreiten max nicht', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>(r => { release = r; });
+      connectSpy.mockImplementation(async function(this: Connection) {
+        await gate;
+        Object.assign(this, mockConn());
+        setState(this, 'isClosed', false);
+        setState(this, 'inTransaction', false);
+        return this;
+      });
+      const pool = new ConnectionPool(opts, { max: 2, acquireTimeout: 0 });
+      const ps = [pool.acquire(), pool.acquire(), pool.acquire()];
+      await Promise.resolve();
+      expect(connectSpy).toHaveBeenCalledTimes(2);
+      release();
+      const [a, b] = await Promise.all(ps.slice(0, 2));
+      expect(pool.size).toBe(2);
+      pool.release(a);
+      expect(await ps[2]).toBe(a);
+      void b;
+    });
+
+    it('tote idle Connection wird verworfen, neue wird erstellt', async () => {
+      const pool = new ConnectionPool(opts);
+      const conn = await pool.acquire();
+      await pool.release(conn);
+      setState(conn, 'isClosed', true);
+      const conn2 = await pool.acquire();
+      expect(conn2).not.toBe(conn);
+      expect(connectSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it('release() einer toten Connection gibt den Slot für Wartende frei', async () => {
+      const pool = new ConnectionPool(opts, { max: 1 });
+      const conn = await pool.acquire();
+      const waiting = pool.acquire();
+      setState(conn, 'isClosed', true);
+      await pool.release(conn);
+      const conn2 = await waiting;
+      expect(conn2).not.toBe(conn);
+    });
+
+    it('offene Transaktion wird bei release() zurückgerollt', async () => {
+      const pool = new ConnectionPool(opts);
+      const conn = await pool.acquire();
+      setState(conn, 'inTransaction', true);
+      (conn.query as jest.Mock).mockResolvedValue({});
+      await pool.release(conn);
+      expect(conn.query).toHaveBeenCalledWith('IF @@trancount > 0 ROLLBACK TRANSACTION');
+      expect(pool.idleCount).toBe(1);
+    });
+
+    it('scheitert der Rollback, wird die Connection zerstört statt wiederverwendet', async () => {
+      const pool = new ConnectionPool(opts);
+      const conn = await pool.acquire();
+      setState(conn, 'inTransaction', true);
+      (conn.query as jest.Mock).mockRejectedValue(new Error('kaputt'));
+      (conn as unknown as { destroy: jest.Mock }).destroy = jest.fn();
+      await pool.release(conn);
+      expect((conn as unknown as { destroy: jest.Mock }).destroy).toHaveBeenCalled();
+      expect(pool.idleCount).toBe(0);
+    });
+
+    it('doppeltes release() ist harmlos', async () => {
+      const pool = new ConnectionPool(opts);
+      const conn = await pool.acquire();
+      await pool.release(conn);
+      await pool.release(conn);
+      expect(pool.idleCount).toBe(1);
+    });
+
+    it('acquireTimeout lehnt nach Ablauf ab', async () => {
+      jest.useFakeTimers();
+      const pool = new ConnectionPool(opts, { max: 1, acquireTimeout: 500 });
+      await pool.acquire();
+      const p = pool.acquire();
+      jest.advanceTimersByTime(501);
+      await expect(p).rejects.toThrow(/500 ms/);
+      expect(pool.waitingCount).toBe(0);
+    });
+
+    it('Idle-Timeout schließt nicht unter min', async () => {
+      jest.useFakeTimers();
+      const pool = new ConnectionPool(opts, { min: 1, idleTimeout: 1000 });
+      const conn = await pool.acquire();
+      await pool.release(conn);
+      jest.advanceTimersByTime(5000);
+      expect(conn.end as jest.Mock).not.toHaveBeenCalled();
+      expect(pool.idleCount).toBe(1);
     });
   });
 });

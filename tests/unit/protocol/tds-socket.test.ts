@@ -102,13 +102,13 @@ describe('TdsSocket', () => {
       const firstPacket = TdsPacket.fromBuffer(mock.written[0]);
       expect(firstPacket.body).toHaveLength(12);
       expect(firstPacket.isLast).toBe(false);
-      expect(firstPacket.packetNumber).toBe(1);
+      expect(firstPacket.packetNumber).toBe(0);
 
       // Paket 2: 2 Bytes Body, Status 0x01 (letztes)
       const secondPacket = TdsPacket.fromBuffer(mock.written[1]);
       expect(secondPacket.body).toHaveLength(2);
       expect(secondPacket.isLast).toBe(true);
-      expect(secondPacket.packetNumber).toBe(2);
+      expect(secondPacket.packetNumber).toBe(1);
     });
 
     it('sendet leeren Body als einzelnes Paket mit EOM', async () => {

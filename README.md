@@ -16,14 +16,16 @@ npm install sybase-tds
 ## Quick start
 
 ```typescript
-import { Connection } from 'sybase-tds';
+import { Connection, DataFormat, DataType } from 'sybase-tds';
 
-const conn = await Connection.connect({
-  host:     'myserver',
-  port:     5000,
-  username: 'sa',
-  password: 'secret',
-});
+const conn = await new Connection({
+  host:           'myserver',
+  port:           5000,
+  username:       'sa',
+  password:       'secret',
+  database:       'mydb',     // optional: `use mydb` after login
+  requestTimeout: 30_000,     // optional: cancel requests after 30 s
+}).connect();
 
 // Simple query
 const { rows } = await conn.query('SELECT id, name FROM users WHERE active = 1');
@@ -31,9 +33,10 @@ for (const [id, name] of rows) {
   console.log(id, name);
 }
 
+// Parameters are bound server-side (no string interpolation)
+const byId = await conn.query('SELECT name FROM users WHERE id = ?', [42]);
+
 // Prepared statement
-import { DataFormat } from 'sybase-tds';
-import { DataType }   from 'sybase-tds/constants';
 
 const stmt = await conn.prepare(
   'SELECT * FROM users WHERE id = ?',
@@ -60,16 +63,16 @@ await conn.end();
 ```typescript
 import { ConnectionPool } from 'sybase-tds';
 
-const pool = ConnectionPool.create(
+const pool = new ConnectionPool(
   { host: 'myserver', port: 5000, username: 'sa', password: 'secret' },
-  { min: 2, max: 10, idleTimeout: 30_000 },
+  { min: 2, max: 10, idleTimeout: 30_000, acquireTimeout: 10_000 },
 );
 
 const conn = await pool.acquire();
 try {
   await conn.query('SELECT 1');
 } finally {
-  pool.release(conn);
+  await pool.release(conn); // rolls back an open transaction, drops broken connections
 }
 
 await pool.end();

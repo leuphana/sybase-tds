@@ -1,5 +1,4 @@
 import { TokenType } from '../../constants/tds-const';
-import { TdsReader } from '../tds-reader';
 import { DataFormat } from '../../types/data-format';
 import { LoginAckParser, LoginAckData } from './login-ack';
 import { DoneParser } from './done-token';
@@ -18,7 +17,10 @@ export type TdsToken =
   | { type: 'eed';       data: EedParser }
   | { type: 'envChange'; data: EnvChangeParser }
   | { type: 'rowFmt';    data: RowFmtParser }
-  | { type: 'row';       data: RowParser };
+  | { type: 'row';       data: RowParser }
+  | { type: 'paramFmt';  data: RowFmtParser }
+  | { type: 'params';    data: RowParser }
+  | { type: 'returnStatus'; data: { status: number } };
 
 // ---------------------------------------------------------------------------
 // TokenParser
@@ -26,6 +28,7 @@ export type TdsToken =
 
 export class TokenParser {
   private _columns: DataFormat[] = [];
+  private _paramColumns: DataFormat[] = [];
 
   get lastColumns(): DataFormat[] { return this._columns; }
 
@@ -86,9 +89,33 @@ export class TokenParser {
 
         case TokenType.ROW: {
           const t = RowParser.read(data.slice(pos), this._columns);
-          const rowBytes = this._rowSize(data, pos);
           tokens.push({ type: 'row', data: t });
-          pos += rowBytes;
+          pos += t.byteLength;
+          break;
+        }
+
+        // Output parameters of a stored procedure: PARAMFMT describes, PARAMS carries values.
+        case TokenType.PARAMFMT: {
+          const bodyLen = data.readUInt16BE(pos + 1);
+          const t = RowFmtParser.read(data.slice(pos), encoding);
+          this._paramColumns = t.columns;
+          tokens.push({ type: 'paramFmt', data: t });
+          pos += 3 + bodyLen;
+          break;
+        }
+
+        case TokenType.PARAMS: {
+          const t = RowParser.read(data.slice(pos), this._paramColumns);
+          tokens.push({ type: 'params', data: t });
+          pos += t.byteLength;
+          break;
+        }
+
+        // RETURNSTATUS: token byte + fixed INT4, no length field.
+        // (Layout not covered by the local docs – verify against a real server.)
+        case TokenType.RETURNSTATUS: {
+          tokens.push({ type: 'returnStatus', data: { status: data.readInt32BE(pos + 1) } });
+          pos += 5;
           break;
         }
 
@@ -103,12 +130,10 @@ export class TokenParser {
         case TokenType.COLINFO: // COLINFO
         case TokenType.OPTIONCMD: // OPTIONCMD (server echo)
         case 0xAE: // COLFMT (TDS 4.x compat metadata)
-        case 0x79: // RETURNSTATUS
         case 0x7C: // PROCID
         case 0x62: // DYNAMIC2 ACK
         case 0xE7: // DYNAMIC ACK
         case TokenType.ORDERBY:
-        case TokenType.PARAMFMT:
         case TokenType.CURINFO:
         case TokenType.CURINFO3:
         {
@@ -143,28 +168,4 @@ export class TokenParser {
     return 3 + bodyLen;
   }
 
-  /** Calculates the byte size of a ROW token based on the known columns. */
-  private _rowSize(data: Buffer, pos: number): number {
-    const r = new TdsReader(data.slice(pos));
-    r.readUInt8(); // token type
-
-    for (const col of this._columns) {
-      if (col.isFixedLength()) {
-        if (col.status & 0x08 /* RowStatus.COLUMNSTATUS */) {
-          const cs = r.readUInt8();
-          if (cs !== 0x00) r.readBytes(col.fixedByteLen());
-        } else {
-          r.readBytes(col.fixedByteLen());
-        }
-      } else {
-        const isLarge = [
-          0x23, 0x22, 0xAE, 0xAF, 0xE1, // TEXT, IMAGE, UNITEXT, LONGCHAR, LONGBINARY
-        ].includes(col.dataType);
-        const len = isLarge ? r.readUInt32BE() : r.readUInt8();
-        if (len > 0) r.readBytes(len);
-      }
-    }
-
-    return r.offset;
-  }
 }
